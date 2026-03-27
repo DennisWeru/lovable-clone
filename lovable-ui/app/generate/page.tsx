@@ -22,11 +22,15 @@ function GenerateContent() {
   const router = useRouter();
   const prompt = searchParams.get("prompt") || "";
   const model = searchParams.get("model") || "gemini-2.5-flash";
+  const initialSandboxId = searchParams.get("sandboxId");
+  const initialPreviewUrl = searchParams.get("previewUrl");
   
   const [messages, setMessages] = useState<Message[]>([]);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(initialPreviewUrl);
+  const [sandboxId, setSandboxId] = useState<string | null>(initialSandboxId);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
   
@@ -39,7 +43,7 @@ function GenerateContent() {
   }, [messages]);
   
   useEffect(() => {
-    if (!prompt) {
+    if (!prompt && !initialSandboxId) {
       router.push("/");
       return;
     }
@@ -50,19 +54,29 @@ function GenerateContent() {
     }
     hasStartedRef.current = true;
     
-    setIsGenerating(true);
-    generateWebsite();
+    // Only auto-generate if we have a prompt and NO preview URL yet
+    if (prompt && !initialPreviewUrl) {
+      setIsGenerating(true);
+      generateWebsite(prompt);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, router]);
+  }, [prompt, router, initialSandboxId, initialPreviewUrl]);
   
-  const generateWebsite = async () => {
+  const generateWebsite = async (currentPrompt: string) => {
     try {
+      setError(null);
+      setIsGenerating(true);
+      
       const response = await fetch("/api/generate-daytona", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt, model }),
+        body: JSON.stringify({ 
+          prompt: currentPrompt, 
+          model, 
+          sandboxId: sandboxId // Pass existing sandboxId if we have one
+        }),
       });
 
       if (!response.ok) {
@@ -97,9 +111,13 @@ function GenerateContent() {
               const message = JSON.parse(data) as Message;
               
               if (message.type === "error") {
-                throw new Error(message.message);
+                setError(message.message || "An error occurred");
+                // Don't throw here to allow partial messages to stay
               } else if (message.type === "complete") {
                 setPreviewUrl(message.previewUrl || null);
+                if (message.sandboxId) {
+                  setSandboxId(message.sandboxId);
+                }
                 setIsGenerating(false);
               } else {
                 setMessages((prev) => [...prev, message]);
@@ -113,8 +131,22 @@ function GenerateContent() {
     } catch (err: any) {
       console.error("Error generating website:", err);
       setError(err.message || "An error occurred");
+    } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isGenerating) return;
+
+    const userMessage = inputValue;
+    setInputValue("");
+    
+    // Add user message to UI (optional, since Lovable will reply)
+    // Actually, Lovable replies with progress messages
+    
+    generateWebsite(userMessage);
   };
   
   const formatToolInput = (input: any) => {
@@ -211,24 +243,25 @@ function GenerateContent() {
           
           {/* Bottom input area */}
           <div className="p-4 border-t border-gray-800">
-            <div className="flex items-center gap-2">
+            <form onSubmit={handleSubmit} className="flex items-center gap-2">
               <input
                 type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Ask Lovable..."
-                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg border border-gray-800 focus:outline-none focus:border-gray-700"
+                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg border border-gray-800 focus:outline-none focus:border-gray-700 disabled:opacity-50"
                 disabled={isGenerating}
               />
-              <button className="p-2 text-gray-400 hover:text-gray-300">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <button 
+                type="submit"
+                disabled={isGenerating || !inputValue.trim()}
+                className="p-2 text-gray-400 hover:text-gray-300 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </button>
-              <button className="p-2 text-gray-400 hover:text-gray-300">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </button>
-            </div>
+            </form>
           </div>
         </div>
         

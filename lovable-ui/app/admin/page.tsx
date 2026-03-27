@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { revalidatePath } from "next/cache";
@@ -22,8 +22,10 @@ export default async function AdminPage() {
     redirect("/dashboard");
   }
 
+  const supabaseAdminInit = createAdminClient();
+
   // Fetch all users
-  const { data: users, error } = await supabase
+  const { data: users, error } = await supabaseAdminInit
     .from("profiles")
     .select("*")
     .order("created_at", { ascending: false });
@@ -36,7 +38,7 @@ export default async function AdminPage() {
 
     if (!userId || isNaN(newCredits)) return;
 
-    const supabaseAdmin = createClient();
+    const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ credits: newCredits })
@@ -54,7 +56,7 @@ export default async function AdminPage() {
 
     if (!userId) return;
 
-    const supabaseAdmin = createClient();
+    const supabaseAdmin = createAdminClient();
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ role: "admin" })

@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { prompt, model } = await req.json();
+    const { prompt, model, sandboxId: existingSandboxId } = await req.json();
     
     if (!prompt) {
       return new Response(
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log(`[API] Starting Daytona generation for prompt using ${model}:`, prompt);
+    console.log(`[API] Starting Daytona generation for ${existingSandboxId || 'new sandbox'} using ${model}:`, prompt);
 
     // Deduct credits early using admin client
     const { error: deductError } = await supabaseAdmin
@@ -95,14 +95,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create a record in projects table with 'pending' status
-    const { data: projectRecord, error: projectError } = await supabase
+    // Create a record in projects table with 'pending' status using admin client to bypass RLS issues
+    const { data: projectRecord, error: projectError } = await supabaseAdmin
       .from("projects")
       .insert({
         user_id: user.id,
         prompt: prompt,
         model: model || "gemini-2.5-flash",
-        status: "pending"
+        status: "pending",
+        sandbox_id: existingSandboxId
       })
       .select()
       .single();
@@ -121,7 +122,13 @@ export async function POST(req: NextRequest) {
       try {
         // Use the generate-in-daytona.ts script
         const scriptPath = path.join(process.cwd(), "scripts", "generate-in-daytona.ts");
-        const child = spawn("npx", ["tsx", scriptPath, prompt, model], {
+        
+        // Pass sandboxId if available
+        const args = existingSandboxId 
+          ? [scriptPath, existingSandboxId, prompt, model]
+          : [scriptPath, prompt, model];
+
+        const child = spawn("npx", ["tsx", ...args], {
           env: {
             ...process.env,
             DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
