@@ -34,16 +34,3 @@ export function createClient() {
     }
   )
 }
-export function createAdminClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-url.supabase.co",
-    process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-service-key",
-    {
-      cookies: {
-        get() { return undefined },
-        set() {},
-        remove() {},
-      },
-    }
-  )
-}
