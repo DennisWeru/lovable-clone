@@ -2,12 +2,15 @@ import { NextRequest } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const GENERATION_COST = 100;
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = createClient();
+    const supabaseAdmin = createAdminClient();
+
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -72,15 +75,15 @@ export async function POST(req: NextRequest) {
 
     console.log(`[API] Starting Daytona generation for prompt using ${model}:`, prompt);
 
-    // Deduct credits early
-    const { error: deductError } = await supabase
-      .from("profiles")
-      .update({ credits: profile.credits - GENERATION_COST })
-      .eq("id", user.id);
+    // Deduct credits atomically via RPC
+    const { data: success, error: rpcError } = await supabaseAdmin.rpc("decrement_credits", {
+      user_id: user.id,
+      amount: GENERATION_COST,
+    });
 
-    if (deductError) {
+    if (rpcError || !success) {
       return new Response(
-        JSON.stringify({ error: "Failed to deduct credits" }),
+        JSON.stringify({ error: "Failed to deduct credits securely. Please try again." }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }

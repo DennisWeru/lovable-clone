@@ -1,4 +1,6 @@
 import { Daytona } from "@daytonaio/sdk";
+import { query } from "@anthropic-ai/claude-code";
+import { GoogleGenAI } from "@google/genai";
 import * as dotenv from "dotenv";
 import * as path from "path";
 
@@ -74,259 +76,121 @@ async function generateWebsiteInDaytona(
     await sandbox.process.executeCommand("npm init -y", projectDir);
     console.log("✓ Package.json created");
 
-    // Step 4: Install AI SDK locally in project
-    console.log("\n4. Installing AI SDK locally...");
-    const installCmd = isClaude ? "npm install @anthropic-ai/claude-code@latest" : "npm install @google/genai@0.1.2 dotenv@16.4.5";
-    const installResult = await sandbox.process.executeCommand(
-      installCmd,
-      projectDir,
-      undefined,
-      180000 // 3 minute timeout
-    );
-
-    if (installResult.exitCode !== 0) {
-      console.error("Installation failed:", installResult.result);
-      throw new Error("Failed to install AI SDK");
-    }
-    console.log("✓ AI SDK installed");
-
-    // Step 5: Create the generation script file
-    console.log("\n5. Creating generation script file...");
-
-    let generationScript = "";
-
-    if (isClaude) {
-      generationScript = `const { query } = require('@anthropic-ai/claude-code');
-const fs = require('fs');
-
-async function generateWebsite() {
-  const prompt = \`${
-    prompt ||
-    "Create a modern blog website with markdown support and a dark theme"
-  }
-  
-  Important requirements:
-  - Create a NextJS app with TypeScript and Tailwind CSS
-  - Use the app directory structure
-  - Create all files in the current directory
-  - Include a package.json with all necessary dependencies
-  - Make the design modern and responsive
-  - Add at least a home page and one other page
-  - Include proper navigation between pages
-  \`;
-
-  console.log('Starting website generation with Claude Code...');
-  console.log('Working directory:', process.cwd());
-  
-  const messages = [];
-  const abortController = new AbortController();
-  
-  try {
-    for await (const message of query({
-      prompt: prompt,
-      abortController: abortController,
-      options: {
-        maxTurns: 20,
-        allowedTools: [
-          'Read',
-          'Write',
-          'Edit',
-          'MultiEdit',
-          'Bash',
-          'LS',
-          'Glob',
-          'Grep'
-        ]
-      }
-    })) {
-      messages.push(message);
-      
-      // Log progress
-      if (message.type === 'text') {
-        console.log('[Claude]:', (message.text || '').substring(0, 80) + '...');
-        console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: message.text }));
-      } else if (message.type === 'tool_use') {
-        console.log('[Tool]:', message.name, message.input?.file_path || '');
-        console.log('__TOOL_USE__', JSON.stringify({ 
-          type: 'tool_use', 
-          name: message.name, 
-          input: message.input 
-        }));
-      } else if (message.type === 'result') {
-        console.log('__TOOL_RESULT__', JSON.stringify({ 
-          type: 'tool_result', 
-          result: message.result 
-        }));
-      }
-    }
-    
-    console.log('\\nGeneration complete!');
-    console.log('Total messages:', messages.length);
-    
-    // Save generation log
-    fs.writeFileSync('generation-log.json', JSON.stringify(messages, null, 2));
-    
-  } catch (error) {
-    console.error('Generation error:', error);
-    console.error('Stack:', error.stack);
-    process.exit(1);
-  }
-}
-
-generateWebsite().catch(console.error);`;
-    } else {
-      generationScript = `const { GoogleGenAI } = require('@google/genai');
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
-
-async function generateWebsite() {
-  const prompt = \`${
-    prompt ||
-    "Create a modern blog website with markdown support and a dark theme"
-  }
-
-  Important requirements:
-  - Create a NextJS app with TypeScript and Tailwind CSS
-  - You MUST output ONLY valid JSON.
-  - The JSON object should have a "files" array and a "commands" array.
-  - "files" is an array of objects with "path" and "content" fields.
-  - "commands" is an array of strings representing bash commands to run AFTER files are created (e.g. "npm install").
-  - Provide complete, robust code. Include a valid package.json.
-  - Provide a basic index page and at least one component.
-  \`;
-
-  console.log('Starting website generation with Gemini...');
-  console.log('Working directory:', process.cwd());
-
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-  try {
-    console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Thinking about the architecture...' }));
-
-    const response = await ai.models.generateContent({
-      model: '${model}',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    const output = response.text;
-    console.log('[Gemini]: Received JSON response');
-
-    let parsed;
-    try {
-      parsed = JSON.parse(output);
-    } catch (e) {
-      console.error("Failed to parse Gemini JSON output", e);
-      console.log('Raw output:', output);
-      process.exit(1);
-    }
-
-    if (parsed.files && Array.isArray(parsed.files)) {
-      for (const file of parsed.files) {
-        if (!file.path || !file.content) continue;
-
-        console.log('__TOOL_USE__', JSON.stringify({
-          type: 'tool_use',
-          name: 'WriteFile',
-          input: { file_path: file.path }
-        }));
-
-        const dir = path.dirname(file.path);
-        if (dir !== '.') {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(file.path, file.content);
-        console.log('Created file:', file.path);
-      }
-    }
-
-    if (parsed.commands && Array.isArray(parsed.commands)) {
-      for (const cmd of parsed.commands) {
-        console.log('__TOOL_USE__', JSON.stringify({
-          type: 'tool_use',
-          name: 'RunCommand',
-          input: { command: cmd }
-        }));
-        console.log('Running command:', cmd);
-        try {
-          execSync(cmd, { stdio: 'inherit' });
-        } catch (e) {
-          console.error("Command failed:", cmd, e.message);
-        }
-      }
-    }
-
-    console.log('\\nGeneration complete!');
-    console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Generation finished successfully!' }));
-    
-  } catch (error) {
-    console.error('Generation error:', error);
-    console.error('Stack:', error.stack);
-    process.exit(1);
-  }
-}
-
-generateWebsite().catch(console.error);`;
-    }
-
-    // Write the script to a file
-    await sandbox.process.executeCommand(
-      `cat > generate.js << 'SCRIPT_EOF'
-${generationScript}
-SCRIPT_EOF`,
-      projectDir
-    );
-    console.log("✓ Generation script written to generate.js");
-
-    // Step 6: Run the generation script
-    console.log("\n6. Running AI generation...");
+    // Step 4: Run AI Generation on the host
+    console.log("\n4. Running AI generation...");
     console.log(`Model: ${model}`);
     console.log(`Prompt: "${prompt || "Create a modern blog website"}"`);
     console.log("\nThis may take several minutes...\n");
 
-    const envVars: Record<string, string> = {
-      NODE_PATH: `${projectDir}/node_modules`,
-    };
-    if (process.env.ANTHROPIC_API_KEY) {
-      envVars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    }
-    if (process.env.GEMINI_API_KEY) {
-      envVars.GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const formattedPrompt = `${
+      prompt ||
+      "Create a modern blog website with markdown support and a dark theme"
     }
 
-    const genResult = await sandbox.process.executeCommand(
-      "node generate.js",
-      projectDir,
-      envVars,
-      600000 // 10 minute timeout
-    );
+    Important requirements:
+    - Create a NextJS app with TypeScript and Tailwind CSS
+    - You MUST output ONLY valid JSON.
+    - The JSON object should have a "files" array and a "commands" array.
+    - "files" is an array of objects with "path" and "content" fields.
+    - "commands" is an array of strings representing bash commands to run AFTER files are created (e.g. "npm install").
+    - Provide complete, robust code. Include a valid package.json.
+    - Provide a basic index page and at least one component.
+    `;
 
-    console.log("\nGeneration output:");
-    console.log(genResult.result);
+    if (isClaude) {
+      console.log('Starting website generation with Claude Code Host Integration...');
+      // To properly host claude code logic we would mock the tools to execute remotely in daytona sandbox.
+      // For this SaaS iteration, we are sticking strictly to Gemini natively for full remote execution handling.
+      throw new Error("Claude models are not fully supported in this SaaS host-isolated version yet. Please use Gemini.");
+    } else {
+      console.log('Starting website generation with Gemini Host Integration...');
 
-    if (genResult.exitCode !== 0) {
-      throw new Error("Generation failed");
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+      console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Thinking about the architecture...' }));
+
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: formattedPrompt,
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      const output = response.text || "{}";
+      console.log('[Gemini]: Received JSON response');
+
+      let parsed;
+      try {
+        parsed = JSON.parse(output);
+      } catch (e) {
+        console.error("Failed to parse Gemini JSON output", e);
+        console.log('Raw output:', output);
+        throw new Error("Failed to parse Gemini JSON output");
+      }
+
+      if (parsed.files && Array.isArray(parsed.files)) {
+        for (const file of parsed.files) {
+          if (!file.path || !file.content) continue;
+
+          console.log('__TOOL_USE__', JSON.stringify({
+            type: 'tool_use',
+            name: 'WriteFile',
+            input: { file_path: file.path }
+          }));
+
+          const dir = path.dirname(file.path);
+          if (dir !== '.') {
+            await sandbox.process.executeCommand(`mkdir -p ${dir}`, projectDir);
+          }
+
+          // Securely write file content to sandbox using cat
+          const base64Content = Buffer.from(file.content).toString('base64');
+          await sandbox.process.executeCommand(`echo "${base64Content}" | base64 -d > "${file.path}"`, projectDir);
+
+          console.log('Created file remotely in sandbox:', file.path);
+        }
+      }
+
+      if (parsed.commands && Array.isArray(parsed.commands)) {
+        for (const cmd of parsed.commands) {
+          console.log('__TOOL_USE__', JSON.stringify({
+            type: 'tool_use',
+            name: 'RunCommand',
+            input: { command: cmd }
+          }));
+          console.log('Running command remotely in sandbox:', cmd);
+          try {
+            const execRes = await sandbox.process.executeCommand(cmd, projectDir, undefined, 300000);
+            if (execRes.exitCode !== 0) {
+              console.warn("Command exited with non-zero code:", execRes.result);
+            }
+          } catch (e: any) {
+            console.error("Command execution error:", cmd, e.message);
+          }
+        }
+      }
+
+      console.log('\nGeneration complete!');
+      console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Generation finished successfully!' }));
     }
 
-    // Step 8: Check generated files
-    console.log("\n8. Checking generated files...");
+    // Step 5: Check generated files
+    console.log("\n5. Checking generated files...");
     const filesResult = await sandbox.process.executeCommand(
       "ls -la",
       projectDir
     );
     console.log(filesResult.result);
 
-    // Step 9: Install dependencies if package.json was updated
+    // Step 6: Install dependencies if package.json was updated
     const hasNextJS = await sandbox.process.executeCommand(
       "test -f package.json && grep -q next package.json && echo yes || echo no",
       projectDir
     );
 
     if (hasNextJS.result?.trim() === "yes") {
-      console.log("\n9. Installing project dependencies...");
+      console.log("\n6. Installing project dependencies...");
       const npmInstall = await sandbox.process.executeCommand(
         "npm install",
         projectDir,
@@ -340,8 +204,8 @@ SCRIPT_EOF`,
         console.log("✓ Dependencies installed");
       }
 
-      // Step 10: Start dev server in background
-      console.log("\n10. Starting development server in background...");
+      // Step 7: Start dev server in background
+      console.log("\n7. Starting development server in background...");
 
       // Start the server in background using nohup
       await sandbox.process.executeCommand(
@@ -370,8 +234,8 @@ SCRIPT_EOF`,
       }
     }
 
-    // Step 11: Get preview URL
-    console.log("\n11. Getting preview URL...");
+    // Step 8: Get preview URL
+    console.log("\n8. Getting preview URL...");
     const preview = await sandbox.getPreviewLink(3000);
 
     console.log("\n✨ SUCCESS! Website generated!");

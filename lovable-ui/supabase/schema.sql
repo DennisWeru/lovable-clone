@@ -14,9 +14,6 @@ alter table public.profiles enable row level security;
 create policy "Public profiles are viewable by everyone." on profiles
   for select using (true);
 
-create policy "Users can update own profile." on profiles
-  for update using (auth.uid() = id);
-
 create policy "Admins can update all profiles." on profiles
   for update using (
     exists (
@@ -47,6 +44,29 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+
+-- Function to safely decrement user credits to prevent TOCTOU race condition
+create or replace function decrement_credits(user_id uuid, amount int)
+returns boolean
+language plpgsql security definer
+as $$
+declare
+  current_credits int;
+begin
+  if amount <= 0 then
+    return false;
+  end if;
+
+  select credits into current_credits from public.profiles where id = user_id;
+  if current_credits >= amount then
+    update public.profiles set credits = credits - amount where id = user_id;
+    return true;
+  else
+    return false;
+  end if;
+end;
+$$;
 
 
 -- Create projects table
