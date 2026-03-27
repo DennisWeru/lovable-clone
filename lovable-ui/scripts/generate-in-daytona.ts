@@ -76,6 +76,8 @@ async function generateWebsiteInDaytona(
         const packageJson = await sandbox.process.executeCommand("cat package.json", projectDir);
         const decisionsLog = await sandbox.process.executeCommand("cat decisions_log.md", projectDir);
         
+        const conversationHistory = process.env.CONVERSATION_HISTORY || "";
+
         projectContext = `
         You are MODIFYING an existing project.
         
@@ -87,6 +89,9 @@ async function generateWebsiteInDaytona(
         
         Previous Decisions Log (from decisions_log.md):
         ${decisionsLog.result || "No logs yet."}
+
+        ${conversationHistory ? `Conversation History (most recent last):
+        ${conversationHistory}` : ""}
         
         IMPORTANT: 
         1. Only provide the "files" that need to be created or modified to fulfill the new request.
@@ -134,9 +139,9 @@ async function generateWebsiteInDaytona(
     console.log("\nThis may take several minutes...\n");
 
     const formattedPrompt = `
-    User Request: ${prompt || "Create a modern blog website with markdown support and a dark theme"}
-
     ${projectContext}
+
+    Current User Request: ${prompt || "Create a modern blog website with markdown support and a dark theme"}
 
     Technical Requirements:
     - Use NextJS (App Router), TypeScript, and Tailwind CSS.
@@ -150,6 +155,7 @@ async function generateWebsiteInDaytona(
     - Initialize "decisions_log.md" with your initial architectural choices and a brief log of our interaction.
     
     If this is a modification:
+    - Use the Conversation History above to fully understand what the user intends, especially for short follow-ups like "proceed", "continue", or "do it".
     - ONLY output the files being changed or added.
     - Update "decisions_log.md" by providing its full content with the new log entry appended.
     `;

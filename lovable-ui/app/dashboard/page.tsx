@@ -77,12 +77,26 @@ export default async function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => {
-              const continueParams = new URLSearchParams({
+              const openParams = new URLSearchParams({
                 prompt: project.prompt,
                 model: project.model,
+                projectId: project.id,
                 ...(project.sandbox_id ? { sandboxId: project.sandbox_id } : {}),
                 ...(project.preview_url ? { previewUrl: project.preview_url } : {}),
               }).toString();
+
+              const isFailed = project.status === "failed";
+              const hasSandbox = !!project.sandbox_id;
+
+              const primaryLabel = isFailed
+                ? "↺ Retry"
+                : hasSandbox
+                ? "✏️ Continue"
+                : "📂 View";
+
+              const primaryClass = isFailed
+                ? "flex-1 py-2 text-center text-sm font-medium bg-red-500/10 hover:bg-red-500/20 text-red-300 rounded-lg transition-colors border border-red-500/20"
+                : "flex-1 py-2 text-center text-sm font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors border border-white/10";
 
               return (
                 <div key={project.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden flex flex-col group hover:border-gray-700 transition-colors">
@@ -106,16 +120,13 @@ export default async function DashboardPage() {
                   </div>
 
                   <div className="border-t border-gray-800 p-4 bg-gray-900/50 flex gap-3">
-                    {project.sandbox_id ? (
-                      <Link
-                        href={`/generate?${continueParams}`}
-                        className="flex-1 py-2 text-center text-sm font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors border border-white/10"
-                      >
-                        ✏️ Continue
-                      </Link>
-                    ) : null}
+                    {/* Primary action — always present for every project */}
+                    <Link href={`/generate?${openParams}`} className={primaryClass}>
+                      {primaryLabel}
+                    </Link>
 
-                    {project.preview_url ? (
+                    {/* Preview link — only when a URL is available */}
+                    {project.preview_url && (
                       <a
                         href={project.preview_url}
                         target="_blank"
@@ -124,13 +135,6 @@ export default async function DashboardPage() {
                       >
                         View Preview
                       </a>
-                    ) : (
-                      <button
-                        disabled
-                        className="flex-1 py-2 text-center text-sm font-medium bg-gray-800 text-gray-500 rounded-lg cursor-not-allowed"
-                      >
-                        Preview Unavailable
-                      </button>
                     )}
                   </div>
                 </div>

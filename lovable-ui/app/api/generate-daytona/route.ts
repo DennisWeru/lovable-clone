@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { prompt, model, sandboxId: existingSandboxId } = await req.json();
+    const { prompt, model, sandboxId: existingSandboxId, projectId } = await req.json();
     
     if (!prompt) {
       return new Response(
@@ -128,18 +128,46 @@ export async function POST(req: NextRequest) {
           ? [scriptPath, existingSandboxId, prompt, model]
           : [scriptPath, prompt, model];
 
+        // Fetch conversation history for follow-up prompts
+        let conversationHistory = "";
+        if (existingSandboxId && projectId) {
+          const { data: historyMsgs } = await supabaseAdmin
+            .from("project_messages")
+            .select("type, content, metadata")
+            .eq("project_id", projectId)
+            .in("type", ["user", "claude_message"]) // skip tool noise
+            .order("created_at", { ascending: true })
+            .limit(20); // last 20 meaningful messages
+
+          if (historyMsgs && historyMsgs.length > 0) {
+            conversationHistory = historyMsgs
+              .map((m) => {
+                const role = m.type === "user" ? "User" : "Assistant";
+                return `${role}: ${m.content ?? ""}`;
+              })
+              .join("\n");
+            console.log(`[API] Passing ${historyMsgs.length} history messages to script`);
+          }
+        }
+
         const child = spawn("npx", ["tsx", ...args], {
           env: {
             ...process.env,
             DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
             GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+            CONVERSATION_HISTORY: conversationHistory,
           },
         });
         
         let sandboxId = "";
         let previewUrl = "";
         let buffer = "";
+        const collectedMessages: Array<{
+          type: string;
+          content?: string;
+          metadata?: Record<string, any>;
+        }> = [];
         
         // Capture stdout
         child.stdout.on("data", async (data) => {
@@ -155,6 +183,8 @@ export async function POST(req: NextRequest) {
               const jsonStart = line.indexOf('__CLAUDE_MESSAGE__') + '__CLAUDE_MESSAGE__'.length;
               try {
                 const message = JSON.parse(line.substring(jsonStart).trim());
+                const payload = { type: "claude_message", content: message.content };
+                collectedMessages.push(payload);
                 await writer.write(
                   encoder.encode(`data: ${JSON.stringify({ 
                     type: "claude_message", 
@@ -170,6 +200,11 @@ export async function POST(req: NextRequest) {
               const jsonStart = line.indexOf('__TOOL_USE__') + '__TOOL_USE__'.length;
               try {
                 const toolUse = JSON.parse(line.substring(jsonStart).trim());
+                collectedMessages.push({
+                  type: "tool_use",
+                  content: toolUse.name,
+                  metadata: { name: toolUse.name, input: toolUse.input },
+                });
                 await writer.write(
                   encoder.encode(`data: ${JSON.stringify({ 
                     type: "tool_use", 
@@ -258,6 +293,18 @@ export async function POST(req: NextRequest) {
                 status: "completed"
               })
               .eq("id", projectRecord.id);
+
+            // Persist conversation messages
+            const messagesToInsert = [
+              { project_id: projectRecord.id, type: "user", content: prompt },
+              ...collectedMessages.map((m) => ({
+                project_id: projectRecord.id,
+                type: m.type,
+                content: m.content ?? null,
+                metadata: m.metadata ?? null,
+              })),
+            ];
+            await supabaseAdmin.from("project_messages").insert(messagesToInsert);
           }
 
           await writer.write(

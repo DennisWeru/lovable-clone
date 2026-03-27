@@ -50,3 +50,41 @@ A dedicated `[id]` route would require an additional server fetch per project op
 ### Impact
 - Users can click **✏️ Continue** on any completed project and immediately send follow-up prompts to modify it.
 - Existing sandbox is reused, reducing Daytona cost and generation time.
+
+## 2026-03-27 - Project Conversation History
+
+### Problem
+Each generation session was ephemeral — refreshing the page lost all chat messages. Users had no way to review past interactions for a project.
+
+### Decision
+- Added `project_messages` Supabase table (`supabase/migrations/20260327_create_project_messages.sql`) with columns: `id`, `project_id` (FK), `type`, `content`, `metadata` (JSONB), `created_at`.
+- RLS: SELECT allowed for the project owner; INSERT/UPDATE/DELETE only via service role (admin client on the server).
+- Updated `generate-daytona/route.ts` to batch-insert messages after each generation run completes — user prompt saved as `type=user`, then `claude_message` and `tool_use` entries from the streamed output.
+- Created `GET /api/project-messages?projectId=xxx` endpoint — verifies ownership, returns messages in chronological order.
+- Updated `generate/page.tsx` to fetch history on mount when `projectId` is in URL params. History messages are flagged with `isHistory: true` and rendered with a "New session" divider above the first live message.
+
+### Design choices
+- **Batch insert after completion**, not per-message during streaming. Avoids latency and DB write pressure in the hot streaming path. Tradeoff: messages are lost if the server crashes mid-generation (acceptable for now).
+- **No separate history route/modal**: history loads inline in the existing generate page to keep UX minimal and fast.
+- **`type=user` messages**: the first message of each generation round (the user's prompt) is stored so the chat history reads as a full conversation, not just AI output.
+
+## 2026-03-27 - Adaptive Dashboard Actions & LLM Context
+
+### Problem
+- Some projects on the dashboard were unopenable if they didn't have a `sandbox_id` (e.g., failed or pending).
+- When "continuing" a project, the LLM had no access to the previous chat history, making follow-up prompts like "proceed" or "fix it" confusing for the AI.
+
+### Decision
+- **Adaptive Dashboard Buttons**: Refactored `app/dashboard/page.tsx` to ensure every project has a primary action.
+  - Completed + Sandbox -> **✏️ Continue**
+  - Completed, no sandbox -> **📂 View** (shows history)
+  - Failed -> **↺ Retry** (red style)
+  - Pending -> **📂 View**
+- **LLM Conversation Context**:
+  - Updated `generate-daytona/route.ts` to fetch the last 20 messages for the project when a `projectId` is provided.
+  - Formatted these messages as a transcript and passed them to the generation script via a `CONVERSATION_HISTORY` environment variable.
+  - Modified `scripts/generate-in-daytona.ts` to inject this history into the system prompt for the AI.
+
+### Impact
+- Users can now open *any* past project to view its history or try to retry/continue it.
+- The AI now understands follow-up requests within the same project context, enabling true iterative development ("make it red", "add a button", etc).

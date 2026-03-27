@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 
 interface Message {
-  type: "claude_message" | "tool_use" | "tool_result" | "progress" | "error" | "complete";
+  type: "user" | "claude_message" | "tool_use" | "tool_result" | "progress" | "error" | "complete";
   content?: string;
   name?: string;
   input?: any;
@@ -13,6 +13,8 @@ interface Message {
   message?: string;
   previewUrl?: string;
   sandboxId?: string;
+  metadata?: any;
+  isHistory?: boolean;
 }
 
 import { Suspense } from "react";
@@ -24,11 +26,13 @@ function GenerateContent() {
   const model = searchParams.get("model") || "gemini-2.5-flash";
   const initialSandboxId = searchParams.get("sandboxId");
   const initialPreviewUrl = searchParams.get("previewUrl");
+  const projectId = searchParams.get("projectId");
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialPreviewUrl);
   const [sandboxId, setSandboxId] = useState<string | null>(initialSandboxId);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,13 +58,43 @@ function GenerateContent() {
     }
     hasStartedRef.current = true;
     
-    // Only auto-generate if we have a prompt and NO preview URL yet
-    if (prompt && !initialPreviewUrl) {
-      setIsGenerating(true);
-      generateWebsite(prompt);
-    }
+    const init = async () => {
+      // Load history first if we have a projectId (continuing a project)
+      if (projectId) {
+        setIsLoadingHistory(true);
+        try {
+          const res = await fetch(`/api/project-messages?projectId=${projectId}`);
+          if (res.ok) {
+            const { messages: historyMsgs } = await res.json();
+            if (historyMsgs && historyMsgs.length > 0) {
+              setMessages(
+                historyMsgs.map((m: any) => ({
+                  type: m.type,
+                  content: m.content ?? undefined,
+                  name: m.metadata?.name,
+                  input: m.metadata?.input,
+                  isHistory: true,
+                }))
+              );
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load history", e);
+        } finally {
+          setIsLoadingHistory(false);
+        }
+      }
+
+      // Only auto-generate if we have a prompt and NO preview URL yet
+      if (prompt && !initialPreviewUrl) {
+        setIsGenerating(true);
+        generateWebsite(prompt);
+      }
+    };
+
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, router, initialSandboxId, initialPreviewUrl]);
+  }, [prompt, router, initialSandboxId, initialPreviewUrl, projectId]);
   
   const generateWebsite = async (currentPrompt: string) => {
     try {
@@ -75,7 +109,8 @@ function GenerateContent() {
         body: JSON.stringify({ 
           prompt: currentPrompt, 
           model, 
-          sandboxId: sandboxId // Pass existing sandboxId if we have one
+          sandboxId: sandboxId,     // existing sandbox to reuse
+          projectId: projectId,     // so the API can fetch conversation history
         }),
       });
 
@@ -194,8 +229,32 @@ function GenerateContent() {
           
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 overflow-x-hidden">
+            {isLoadingHistory && (
+              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500" />
+                Loading conversation history...
+              </div>
+            )}
+
             {messages.map((message, index) => (
               <div key={index}>
+                {/* History divider — shown before first non-history message */}
+                {!message.isHistory && index > 0 && messages[index - 1].isHistory && (
+                  <div className="flex items-center gap-2 py-2">
+                    <div className="flex-1 h-px bg-gray-800" />
+                    <span className="text-xs text-gray-600 px-2">New session</span>
+                    <div className="flex-1 h-px bg-gray-800" />
+                  </div>
+                )}
+
+                {message.type === "user" && (
+                  <div className="flex justify-end">
+                    <div className="bg-blue-600/20 border border-blue-500/30 rounded-lg p-3 max-w-[85%]">
+                      <p className="text-blue-100 text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                    </div>
+                  </div>
+                )}
+
                 {message.type === "claude_message" && (
                   <div className="bg-gray-900 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -203,6 +262,9 @@ function GenerateContent() {
                         <span className="text-white text-xs">L</span>
                       </div>
                       <span className="text-white font-medium">Lovable</span>
+                      {message.isHistory && (
+                        <span className="text-xs text-gray-600 ml-auto">history</span>
+                      )}
                     </div>
                     <p className="text-gray-300 whitespace-pre-wrap break-words">{message.content}</p>
                   </div>
