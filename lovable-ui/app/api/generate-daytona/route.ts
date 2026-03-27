@@ -1,34 +1,41 @@
 import { NextRequest } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 const GENERATION_COST = 100;
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = createClient();
-    const supabaseAdmin = createAdminClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    const { data: { user } } = await supabase.auth.getUser();
+    if (authError) {
+      console.error("[API] Auth error:", authError);
+    }
 
     if (!user) {
+      console.error("[API] No user found in session");
       return new Response(
         JSON.stringify({ error: "Unauthorized. Please log in to generate code." }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const { data: profile, error: profileError } = await supabase
+    console.log("[API] User authenticated:", user.id);
+
+    // Use admin client to bypass RLS for profile check
+    const supabaseAdmin = createAdminClient();
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("credits")
       .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {
+      console.error("[API] Profile fetch error for user", user.id, ":", profileError);
       return new Response(
-        JSON.stringify({ error: "Could not fetch user profile" }),
+        JSON.stringify({ error: "Could not fetch user profile", details: profileError?.message }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -75,13 +82,13 @@ export async function POST(req: NextRequest) {
 
     console.log(`[API] Starting Daytona generation for prompt using ${model}:`, prompt);
 
-    // Deduct credits atomically via RPC
-    const { data: success, error: rpcError } = await supabaseAdmin.rpc("decrement_credits", {
-      user_id: user.id,
-      amount: GENERATION_COST,
-    });
+    // Deduct credits early using admin client
+    const { error: deductError } = await supabaseAdmin
+      .from("profiles")
+      .update({ credits: profile.credits - GENERATION_COST })
+      .eq("id", user.id);
 
-    if (rpcError || !success) {
+    if (deductError) {
       return new Response(
         JSON.stringify({ error: "Failed to deduct credits securely. Please try again." }),
         { status: 500, headers: { "Content-Type": "application/json" } }
@@ -211,15 +218,12 @@ export async function POST(req: NextRequest) {
           const error = data.toString();
           console.error("[Daytona Error]:", error);
           
-          // Only send actual errors, not debug info
-          if (error.includes("Error") || error.includes("Failed")) {
-            await writer.write(
-              encoder.encode(`data: ${JSON.stringify({ 
-                type: "error", 
-                message: error.trim() 
-              })}\n\n`)
-            );
-          }
+          await writer.write(
+            encoder.encode(`data: ${JSON.stringify({ 
+              type: "error", 
+              message: error.trim() 
+            })}\n\n`)
+          );
         });
         
         // Wait for process to complete
@@ -237,9 +241,9 @@ export async function POST(req: NextRequest) {
         
         // Send completion with preview URL
         if (previewUrl) {
-          // Update the database with completion
+          // Update the database with completion using admin client
           if (projectRecord) {
-            await supabase
+            await supabaseAdmin
               .from("projects")
               .update({
                 sandbox_id: sandboxId,
@@ -268,7 +272,7 @@ export async function POST(req: NextRequest) {
 
         // Update project status to failed
         if (projectRecord) {
-          await supabase
+          await supabaseAdmin
             .from("projects")
             .update({ status: "failed" })
             .eq("id", projectRecord.id);
