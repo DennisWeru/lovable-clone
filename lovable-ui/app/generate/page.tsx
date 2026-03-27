@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 
 interface Message {
-  type: "claude_message" | "tool_use" | "tool_result" | "progress" | "error" | "complete";
+  type: "user" | "claude_message" | "tool_use" | "tool_result" | "progress" | "error" | "complete";
   content?: string;
   name?: string;
   input?: any;
@@ -13,17 +13,28 @@ interface Message {
   message?: string;
   previewUrl?: string;
   sandboxId?: string;
+  metadata?: any;
+  isHistory?: boolean;
 }
 
-export default function GeneratePage() {
+import { Suspense } from "react";
+
+function GenerateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const prompt = searchParams.get("prompt") || "";
+  const model = searchParams.get("model") || "gemini-2.5-flash";
+  const initialSandboxId = searchParams.get("sandboxId");
+  const initialPreviewUrl = searchParams.get("previewUrl");
+  const projectId = searchParams.get("projectId");
   
   const [messages, setMessages] = useState<Message[]>([]);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(initialPreviewUrl);
+  const [sandboxId, setSandboxId] = useState<string | null>(initialSandboxId);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
   
@@ -36,7 +47,7 @@ export default function GeneratePage() {
   }, [messages]);
   
   useEffect(() => {
-    if (!prompt) {
+    if (!prompt && !initialSandboxId) {
       router.push("/");
       return;
     }
@@ -47,19 +58,60 @@ export default function GeneratePage() {
     }
     hasStartedRef.current = true;
     
-    setIsGenerating(true);
-    generateWebsite();
+    const init = async () => {
+      // Load history first if we have a projectId (continuing a project)
+      if (projectId) {
+        setIsLoadingHistory(true);
+        try {
+          const res = await fetch(`/api/project-messages?projectId=${projectId}`);
+          if (res.ok) {
+            const { messages: historyMsgs } = await res.json();
+            if (historyMsgs && historyMsgs.length > 0) {
+              setMessages(
+                historyMsgs.map((m: any) => ({
+                  type: m.type,
+                  content: m.content ?? undefined,
+                  name: m.metadata?.name,
+                  input: m.metadata?.input,
+                  isHistory: true,
+                }))
+              );
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load history", e);
+        } finally {
+          setIsLoadingHistory(false);
+        }
+      }
+
+      // Only auto-generate if we have a prompt and NO preview URL yet
+      if (prompt && !initialPreviewUrl) {
+        setIsGenerating(true);
+        generateWebsite(prompt);
+      }
+    };
+
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, router]);
+  }, [prompt, router, initialSandboxId, initialPreviewUrl, projectId]);
   
-  const generateWebsite = async () => {
+  const generateWebsite = async (currentPrompt: string) => {
     try {
+      setError(null);
+      setIsGenerating(true);
+      
       const response = await fetch("/api/generate-daytona", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ 
+          prompt: currentPrompt, 
+          model, 
+          sandboxId: sandboxId,     // existing sandbox to reuse
+          projectId: projectId,     // so the API can fetch conversation history
+        }),
       });
 
       if (!response.ok) {
@@ -94,9 +146,13 @@ export default function GeneratePage() {
               const message = JSON.parse(data) as Message;
               
               if (message.type === "error") {
-                throw new Error(message.message);
+                setError(message.message || "An error occurred");
+                // Don't throw here to allow partial messages to stay
               } else if (message.type === "complete") {
                 setPreviewUrl(message.previewUrl || null);
+                if (message.sandboxId) {
+                  setSandboxId(message.sandboxId);
+                }
                 setIsGenerating(false);
               } else {
                 setMessages((prev) => [...prev, message]);
@@ -110,8 +166,22 @@ export default function GeneratePage() {
     } catch (err: any) {
       console.error("Error generating website:", err);
       setError(err.message || "An error occurred");
+    } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isGenerating) return;
+
+    const userMessage = inputValue;
+    setInputValue("");
+    
+    // Add user message to UI (optional, since Lovable will reply)
+    // Actually, Lovable replies with progress messages
+    
+    generateWebsite(userMessage);
   };
   
   const formatToolInput = (input: any) => {
@@ -159,8 +229,32 @@ export default function GeneratePage() {
           
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 overflow-x-hidden">
+            {isLoadingHistory && (
+              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500" />
+                Loading conversation history...
+              </div>
+            )}
+
             {messages.map((message, index) => (
               <div key={index}>
+                {/* History divider — shown before first non-history message */}
+                {!message.isHistory && index > 0 && messages[index - 1].isHistory && (
+                  <div className="flex items-center gap-2 py-2">
+                    <div className="flex-1 h-px bg-gray-800" />
+                    <span className="text-xs text-gray-600 px-2">New session</span>
+                    <div className="flex-1 h-px bg-gray-800" />
+                  </div>
+                )}
+
+                {message.type === "user" && (
+                  <div className="flex justify-end">
+                    <div className="bg-blue-600/20 border border-blue-500/30 rounded-lg p-3 max-w-[85%]">
+                      <p className="text-blue-100 text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                    </div>
+                  </div>
+                )}
+
                 {message.type === "claude_message" && (
                   <div className="bg-gray-900 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -168,6 +262,9 @@ export default function GeneratePage() {
                         <span className="text-white text-xs">L</span>
                       </div>
                       <span className="text-white font-medium">Lovable</span>
+                      {message.isHistory && (
+                        <span className="text-xs text-gray-600 ml-auto">history</span>
+                      )}
                     </div>
                     <p className="text-gray-300 whitespace-pre-wrap break-words">{message.content}</p>
                   </div>
@@ -208,24 +305,25 @@ export default function GeneratePage() {
           
           {/* Bottom input area */}
           <div className="p-4 border-t border-gray-800">
-            <div className="flex items-center gap-2">
+            <form onSubmit={handleSubmit} className="flex items-center gap-2">
               <input
                 type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Ask Lovable..."
-                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg border border-gray-800 focus:outline-none focus:border-gray-700"
+                className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg border border-gray-800 focus:outline-none focus:border-gray-700 disabled:opacity-50"
                 disabled={isGenerating}
               />
-              <button className="p-2 text-gray-400 hover:text-gray-300">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <button 
+                type="submit"
+                disabled={isGenerating || !inputValue.trim()}
+                className="p-2 text-gray-400 hover:text-gray-300 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </button>
-              <button className="p-2 text-gray-400 hover:text-gray-300">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </button>
-            </div>
+            </form>
           </div>
         </div>
         
@@ -256,5 +354,13 @@ export default function GeneratePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>}>
+      <GenerateContent />
+    </Suspense>
   );
 }
