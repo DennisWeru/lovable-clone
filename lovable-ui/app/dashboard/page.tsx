@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
@@ -11,15 +11,17 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  const supabaseAdmin = createAdminClient();
+
   // Fetch user profile (for credits and role)
-  const { data: profile } = await supabase
+  const { data: profile } = await supabaseAdmin
     .from("profiles")
     .select("credits, role")
     .eq("id", user.id)
     .single();
 
   // Fetch user projects
-  const { data: projects, error } = await supabase
+  const { data: projects, error } = await supabaseAdmin
     .from("projects")
     .select("*")
     .eq("user_id", user.id)
@@ -74,58 +76,70 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
-              <div key={project.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden flex flex-col group hover:border-gray-700 transition-colors">
-                <div className="p-6 flex-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-medium px-2.5 py-1 bg-gray-800 text-gray-300 rounded-md">
-                      {new Date(project.created_at).toLocaleDateString()}
-                    </span>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-md ${
-                      project.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                      project.status === 'failed' ? 'bg-red-500/20 text-red-400' :
-                      'bg-yellow-500/20 text-yellow-400'
-                    }`}>
-                      {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-medium text-white mb-2 line-clamp-2" title={project.prompt}>
-                    "{project.prompt}"
-                  </h3>
-                  <p className="text-xs text-gray-500">Model: {project.model}</p>
-                </div>
+            {projects.map((project) => {
+              const openParams = new URLSearchParams({
+                prompt: project.prompt,
+                model: project.model,
+                projectId: project.id,
+                ...(project.sandbox_id ? { sandboxId: project.sandbox_id } : {}),
+                ...(project.preview_url ? { previewUrl: project.preview_url } : {}),
+              }).toString();
 
-                <div className="border-t border-gray-800 p-4 bg-gray-900/50 flex gap-3">
-                  {project.preview_url ? (
-                    <a
-                      href={project.preview_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 py-2 text-center text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                    >
-                      View Preview
-                    </a>
-                  ) : (
-                    <button
-                      disabled
-                      className="flex-1 py-2 text-center text-sm font-medium bg-gray-800 text-gray-500 rounded-lg cursor-not-allowed"
-                    >
-                      Preview Unavailable
-                    </button>
-                  )}
-                  {project.sandbox_id && (
-                    <button
-                      className="p-2 text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-lg transition-colors"
-                      title={`Sandbox ID: ${project.sandbox_id}`}
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                      </svg>
-                    </button>
-                  )}
+              const isFailed = project.status === "failed";
+              const hasSandbox = !!project.sandbox_id;
+
+              const primaryLabel = isFailed
+                ? "↺ Retry"
+                : hasSandbox
+                ? "✏️ Continue"
+                : "📂 View";
+
+              const primaryClass = isFailed
+                ? "flex-1 py-2 text-center text-sm font-medium bg-red-500/10 hover:bg-red-500/20 text-red-300 rounded-lg transition-colors border border-red-500/20"
+                : "flex-1 py-2 text-center text-sm font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors border border-white/10";
+
+              return (
+                <div key={project.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden flex flex-col group hover:border-gray-700 transition-colors">
+                  <div className="p-6 flex-1">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-xs font-medium px-2.5 py-1 bg-gray-800 text-gray-300 rounded-md">
+                        {new Date(project.created_at).toLocaleDateString()}
+                      </span>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-md ${
+                        project.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                        project.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                        'bg-yellow-500/20 text-yellow-400'
+                      }`}>
+                        {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-medium text-white mb-2 line-clamp-2" title={project.prompt}>
+                      "{project.prompt}"
+                    </h3>
+                    <p className="text-xs text-gray-500">Model: {project.model}</p>
+                  </div>
+
+                  <div className="border-t border-gray-800 p-4 bg-gray-900/50 flex gap-3">
+                    {/* Primary action — always present for every project */}
+                    <Link href={`/generate?${openParams}`} className={primaryClass}>
+                      {primaryLabel}
+                    </Link>
+
+                    {/* Preview link — only when a URL is available */}
+                    {project.preview_url && (
+                      <a
+                        href={project.preview_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-2 text-center text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                      >
+                        View Preview
+                      </a>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

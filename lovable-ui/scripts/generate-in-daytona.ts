@@ -64,45 +64,103 @@ async function generateWebsiteInDaytona(
     // Get the root directory
     const rootDir = await sandbox.getUserRootDir();
     console.log(`✓ Working directory: ${rootDir}`);
-
-    // Step 2: Create project directory
-    console.log("\n2. Setting up project directory...");
     const projectDir = `${rootDir}/website-project`;
-    await sandbox.process.executeCommand(`mkdir -p ${projectDir}`, rootDir);
-    console.log(`✓ Created project directory: ${projectDir}`);
 
-    // Step 3: Initialize npm project
-    console.log("\n3. Initializing npm project...");
-    await sandbox.process.executeCommand("npm init -y", projectDir);
-    console.log("✓ Package.json created");
+    let projectContext = "";
+    const isFollowUp = !!sandboxIdArg;
 
-    // Step 4: Run AI Generation on the host
-    console.log("\n4. Running AI generation...");
-    console.log(`Model: ${model}`);
-    console.log(`Prompt: "${prompt || "Create a modern blog website"}"`);
-    console.log("\nThis may take several minutes...\n");
+    if (isFollowUp) {
+      console.log("\n2. Detecting existing project context and decisions log...");
+      try {
+        const lsResult = await sandbox.process.executeCommand("find . -maxdepth 3 -not -path '*/.*' -not -path '*/node_modules/*'", projectDir);
+        const packageJson = await sandbox.process.executeCommand("cat package.json", projectDir);
+        const decisionsLog = await sandbox.process.executeCommand("cat decisions_log.md", projectDir);
 
-    const formattedPrompt = `${
-      prompt ||
-      "Create a modern blog website with markdown support and a dark theme"
+        const conversationHistory = process.env.CONVERSATION_HISTORY || "";
+
+        projectContext = `
+        You are MODIFYING an existing project.
+
+        Existing file structure:
+        ${lsResult.result || "Unknown"}
+
+        Existing package.json:
+        ${packageJson.result || "{}"}
+
+        Previous Decisions Log (from decisions_log.md):
+        ${decisionsLog.result || "No logs yet."}
+
+        ${conversationHistory ? `Conversation History (most recent last):
+        ${conversationHistory}` : ""}
+
+        IMPORTANT:
+        1. Only provide the "files" that need to be created or modified to fulfill the new request.
+        2. Do NOT provide unchanged files to save tokens and time.
+        3. Only provide "commands" that are necessary for the modification (e.g. installing new packages). Do not run "npm install" if not needed.
+        4. If you modify a file, provide its FULL content in the "files" array.
+        5. You MUST append your current decisions and changes to "decisions_log.md" by including it in the "files" array with the updated content.
+        6. Always run the build command to ensure there are no errors after modifications.
+        `;
+      } catch (e) {
+        console.log("Could not read project context, falling back to full generation.");
+      }
+    } else {
+      // Step 2: Create project directory
+      console.log("\n2. Setting up project directory...");
+      await sandbox.process.executeCommand(`mkdir -p ${projectDir}`, rootDir);
+      console.log(`✓ Created project directory: ${projectDir}`);
+
+      // Step 3: Initialize npm project
+      console.log("\n3. Initializing npm project...");
+      await sandbox.process.executeCommand("npm init -y", projectDir);
+      console.log("✓ Package.json created");
+
+      // Step 4: Install AI SDK locally in project
+      console.log("\n4. Installing AI SDK locally...");
+      const installCmd = isClaude ? "npm install @anthropic-ai/claude-code@latest" : "npm install @google/generative-ai dotenv";
+      const installResult = await sandbox.process.executeCommand(
+        installCmd,
+        projectDir,
+        undefined,
+        300000 // 5 minute timeout
+      );
+
+      if (installResult.exitCode !== 0) {
+        console.error("Installation failed:", installResult.result);
+        throw new Error("Failed to install AI SDK");
+      }
+      console.log("✓ AI SDK installed");
     }
 
-    Important requirements:
-    - Create a NextJS app with TypeScript and Tailwind CSS
-    - You MUST output ONLY valid JSON.
+    // Step 5: Run AI generation (Host Integration)
+    console.log(`\n${isFollowUp ? '3' : '5'}. Running AI generation...`);
+    console.log(`Model: ${model}`);
+    console.log(`Prompt Summary: "${(prompt || "").substring(0, 100)}..."`);
+    console.log("\nThis may take several minutes...\n");
+
+    const formattedPrompt = `
+    ${projectContext}
+
+    Current User Request: ${prompt || "Create a modern blog website with markdown support and a dark theme"}
+
+    Technical Requirements:
+    - Use NextJS (App Router), TypeScript, and Tailwind CSS.
+    - You MUST output ONLY a valid JSON object.
     - The JSON object should have a "files" array and a "commands" array.
-    - "files" is an array of objects with "path" and "content" fields.
-    - "commands" is an array of strings representing bash commands to run AFTER files are created (e.g. "npm install").
-    - Provide complete, robust code. Include a valid package.json.
-    - Provide a basic index page and at least one component.
+    - "files": [{ "path": "string", "content": "string" }]
+    - "commands": ["string"] (bash commands to run after file creation).
+
+    If this is a new project:
+    - Provide all necessary files for a working NextJS app (package.json, tailwind.config.ts, tsconfig.json, app/layout.tsx, app/page.tsx, etc).
+    - Initialize "decisions_log.md" with your initial architectural choices and a brief log of our interaction.
+
+    If this is a modification:
+    - Use the Conversation History above to fully understand what the user intends, especially for short follow-ups like "proceed", "continue", or "do it".
+    - ONLY output the files being changed or added.
+    - Update "decisions_log.md" by providing its full content with the new log entry appended.
     `;
 
-    if (isClaude) {
-      console.log('Starting website generation with Claude Code Host Integration...');
-      // To properly host claude code logic we would mock the tools to execute remotely in daytona sandbox.
-      // For this SaaS iteration, we are sticking strictly to Gemini natively for full remote execution handling.
-      throw new Error("Claude models are not fully supported in this SaaS host-isolated version yet. Please use Gemini.");
-    } else {
+    if (isGemini) {
       console.log('Starting website generation with Gemini Host Integration...');
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -111,7 +169,7 @@ async function generateWebsiteInDaytona(
 
       const response = await ai.models.generateContent({
         model: model,
-        contents: formattedPrompt,
+        contents: [formattedPrompt], // Gemini v2 requires an array
         config: {
           responseMimeType: "application/json",
         }
@@ -126,7 +184,7 @@ async function generateWebsiteInDaytona(
       } catch (e) {
         console.error("Failed to parse Gemini JSON output", e);
         console.log('Raw output:', output);
-        throw new Error("Failed to parse Gemini JSON output");
+        throw new Error("Failed to parse Gemini JSON output. Make sure the AI returns valid JSON.");
       }
 
       if (parsed.files && Array.isArray(parsed.files)) {
@@ -144,7 +202,7 @@ async function generateWebsiteInDaytona(
             await sandbox.process.executeCommand(`mkdir -p ${dir}`, projectDir);
           }
 
-          // Securely write file content to sandbox using cat
+          // Securely write file content to sandbox using cat and base64
           const base64Content = Buffer.from(file.content).toString('base64');
           await sandbox.process.executeCommand(`echo "${base64Content}" | base64 -d > "${file.path}"`, projectDir);
 
@@ -163,7 +221,7 @@ async function generateWebsiteInDaytona(
           try {
             const execRes = await sandbox.process.executeCommand(cmd, projectDir, undefined, 300000);
             if (execRes.exitCode !== 0) {
-              console.warn("Command exited with non-zero code:", execRes.result);
+              console.warn(`Command "${cmd}" exited with code ${execRes.exitCode}: ${execRes.result}`);
             }
           } catch (e: any) {
             console.error("Command execution error:", cmd, e.message);
@@ -173,6 +231,9 @@ async function generateWebsiteInDaytona(
 
       console.log('\nGeneration complete!');
       console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Generation finished successfully!' }));
+    } else if (isClaude) {
+      console.log('Starting website generation with Claude Code Host Integration...');
+      throw new Error("Claude models are not fully supported in this SaaS host-isolated version yet. Please use Gemini.");
     }
 
     // Step 5: Check generated files
