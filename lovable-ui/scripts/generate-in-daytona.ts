@@ -7,12 +7,27 @@ dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 async function generateWebsiteInDaytona(
   sandboxIdArg?: string,
-  prompt?: string
+  prompt?: string,
+  modelArg?: string
 ) {
   console.log("🚀 Starting website generation in Daytona sandbox...\n");
 
-  if (!process.env.DAYTONA_API_KEY || !process.env.ANTHROPIC_API_KEY) {
-    console.error("ERROR: DAYTONA_API_KEY and ANTHROPIC_API_KEY must be set");
+  const model = modelArg || "gemini-2.5-flash";
+  const isClaude = model.startsWith("claude");
+  const isGemini = model.startsWith("gemini");
+
+  if (!process.env.DAYTONA_API_KEY) {
+    console.error("ERROR: DAYTONA_API_KEY must be set");
+    process.exit(1);
+  }
+
+  if (isClaude && !process.env.ANTHROPIC_API_KEY) {
+    console.error("ERROR: ANTHROPIC_API_KEY must be set for Claude models");
+    process.exit(1);
+  }
+
+  if (isGemini && !process.env.GEMINI_API_KEY) {
+    console.error("ERROR: GEMINI_API_KEY must be set for Gemini models");
     process.exit(1);
   }
 
@@ -59,10 +74,11 @@ async function generateWebsiteInDaytona(
     await sandbox.process.executeCommand("npm init -y", projectDir);
     console.log("✓ Package.json created");
 
-    // Step 4: Install Claude Code SDK locally in project
-    console.log("\n4. Installing Claude Code SDK locally...");
+    // Step 4: Install AI SDK locally in project
+    console.log("\n4. Installing AI SDK locally...");
+    const installCmd = isClaude ? "npm install @anthropic-ai/claude-code@latest" : "npm install @google/genai@0.1.2 dotenv@16.4.5";
     const installResult = await sandbox.process.executeCommand(
-      "npm install @anthropic-ai/claude-code@latest",
+      installCmd,
       projectDir,
       undefined,
       180000 // 3 minute timeout
@@ -70,22 +86,17 @@ async function generateWebsiteInDaytona(
 
     if (installResult.exitCode !== 0) {
       console.error("Installation failed:", installResult.result);
-      throw new Error("Failed to install Claude Code SDK");
+      throw new Error("Failed to install AI SDK");
     }
-    console.log("✓ Claude Code SDK installed");
+    console.log("✓ AI SDK installed");
 
-    // Verify installation
-    console.log("\n5. Verifying installation...");
-    const checkInstall = await sandbox.process.executeCommand(
-      "ls -la node_modules/@anthropic-ai/claude-code",
-      projectDir
-    );
-    console.log("Installation check:", checkInstall.result);
+    // Step 5: Create the generation script file
+    console.log("\n5. Creating generation script file...");
 
-    // Step 6: Create the generation script file
-    console.log("\n6. Creating generation script file...");
+    let generationScript = "";
 
-    const generationScript = `const { query } = require('@anthropic-ai/claude-code');
+    if (isClaude) {
+      generationScript = `const { query } = require('@anthropic-ai/claude-code');
 const fs = require('fs');
 
 async function generateWebsite() {
@@ -155,9 +166,101 @@ async function generateWebsite() {
     // Save generation log
     fs.writeFileSync('generation-log.json', JSON.stringify(messages, null, 2));
     
-    // List generated files
-    const files = fs.readdirSync('.').filter(f => !f.startsWith('.'));
-    console.log('\\nGenerated files:', files.join(', '));
+  } catch (error) {
+    console.error('Generation error:', error);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+  }
+}
+
+generateWebsite().catch(console.error);`;
+    } else {
+      generationScript = `const { GoogleGenAI } = require('@google/genai');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+async function generateWebsite() {
+  const prompt = \`${
+    prompt ||
+    "Create a modern blog website with markdown support and a dark theme"
+  }
+
+  Important requirements:
+  - Create a NextJS app with TypeScript and Tailwind CSS
+  - You MUST output ONLY valid JSON.
+  - The JSON object should have a "files" array and a "commands" array.
+  - "files" is an array of objects with "path" and "content" fields.
+  - "commands" is an array of strings representing bash commands to run AFTER files are created (e.g. "npm install").
+  - Provide complete, robust code. Include a valid package.json.
+  - Provide a basic index page and at least one component.
+  \`;
+
+  console.log('Starting website generation with Gemini...');
+  console.log('Working directory:', process.cwd());
+
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+  try {
+    console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Thinking about the architecture...' }));
+
+    const response = await ai.models.generateContent({
+      model: '${model}',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const output = response.text;
+    console.log('[Gemini]: Received JSON response');
+
+    let parsed;
+    try {
+      parsed = JSON.parse(output);
+    } catch (e) {
+      console.error("Failed to parse Gemini JSON output", e);
+      console.log('Raw output:', output);
+      process.exit(1);
+    }
+
+    if (parsed.files && Array.isArray(parsed.files)) {
+      for (const file of parsed.files) {
+        if (!file.path || !file.content) continue;
+
+        console.log('__TOOL_USE__', JSON.stringify({
+          type: 'tool_use',
+          name: 'WriteFile',
+          input: { file_path: file.path }
+        }));
+
+        const dir = path.dirname(file.path);
+        if (dir !== '.') {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(file.path, file.content);
+        console.log('Created file:', file.path);
+      }
+    }
+
+    if (parsed.commands && Array.isArray(parsed.commands)) {
+      for (const cmd of parsed.commands) {
+        console.log('__TOOL_USE__', JSON.stringify({
+          type: 'tool_use',
+          name: 'RunCommand',
+          input: { command: cmd }
+        }));
+        console.log('Running command:', cmd);
+        try {
+          execSync(cmd, { stdio: 'inherit' });
+        } catch (e) {
+          console.error("Command failed:", cmd, e.message);
+        }
+      }
+    }
+
+    console.log('\\nGeneration complete!');
+    console.log('__CLAUDE_MESSAGE__', JSON.stringify({ type: 'assistant', content: 'Generation finished successfully!' }));
     
   } catch (error) {
     console.error('Generation error:', error);
@@ -167,6 +270,7 @@ async function generateWebsite() {
 }
 
 generateWebsite().catch(console.error);`;
+    }
 
     // Write the script to a file
     await sandbox.process.executeCommand(
@@ -177,25 +281,26 @@ SCRIPT_EOF`,
     );
     console.log("✓ Generation script written to generate.js");
 
-    // Verify the script was created
-    const checkScript = await sandbox.process.executeCommand(
-      "ls -la generate.js && head -5 generate.js",
-      projectDir
-    );
-    console.log("Script verification:", checkScript.result);
-
-    // Step 7: Run the generation script
-    console.log("\n7. Running Claude Code generation...");
+    // Step 6: Run the generation script
+    console.log("\n6. Running AI generation...");
+    console.log(`Model: ${model}`);
     console.log(`Prompt: "${prompt || "Create a modern blog website"}"`);
     console.log("\nThis may take several minutes...\n");
+
+    const envVars: Record<string, string> = {
+      NODE_PATH: `${projectDir}/node_modules`,
+    };
+    if (process.env.ANTHROPIC_API_KEY) {
+      envVars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    }
+    if (process.env.GEMINI_API_KEY) {
+      envVars.GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    }
 
     const genResult = await sandbox.process.executeCommand(
       "node generate.js",
       projectDir,
-      {
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-        NODE_PATH: `${projectDir}/node_modules`,
-      },
+      envVars,
       600000 // 10 minute timeout
     );
 
@@ -328,34 +433,37 @@ async function main() {
   const args = process.argv.slice(2);
   let sandboxId: string | undefined;
   let prompt: string | undefined;
+  let model: string | undefined;
 
-  // Parse arguments
+  // The caller passes: tsx generate-in-daytona.ts <prompt> <model>
+  // However, the caller might also pass a sandboxId.
+  // We'll simplify and assume: args[0] is prompt, args[1] is model
+  // Or handle the uuid check to maintain backwards compatibility
+
   if (args.length > 0) {
-    // Check if first arg is a sandbox ID (UUID format)
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(args[0])) {
       sandboxId = args[0];
-      prompt = args.slice(1).join(" ");
+      prompt = args[1];
+      model = args[2];
     } else {
-      prompt = args.join(" ");
+      prompt = args[0];
+      model = args[1];
     }
   }
 
   if (!prompt) {
-    prompt =
-      "Create a modern blog website with markdown support and a dark theme. Include a home page, blog listing page, and individual blog post pages.";
+    prompt = "Create a modern blog website with markdown support and a dark theme.";
   }
 
   console.log("📝 Configuration:");
-  console.log(
-    `- Sandbox: ${sandboxId ? `Using existing ${sandboxId}` : "Creating new"}`
-  );
+  console.log(`- Sandbox: ${sandboxId ? `Using existing ${sandboxId}` : "Creating new"}`);
   console.log(`- Prompt: ${prompt}`);
+  console.log(`- Model: ${model || "gemini-2.5-flash (default)"}`);
   console.log();
 
   try {
-    await generateWebsiteInDaytona(sandboxId, prompt);
+    await generateWebsiteInDaytona(sandboxId, prompt, model);
   } catch (error) {
     console.error("Failed to generate website:", error);
     process.exit(1);
