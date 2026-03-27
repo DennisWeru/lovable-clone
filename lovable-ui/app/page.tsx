@@ -8,11 +8,13 @@ export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
 
+  const [model, setModel] = useState("gemini-2.5-flash");
+
   const handleGenerate = () => {
     if (!prompt.trim()) return;
 
-    // Navigate to generate page with prompt
-    router.push(`/generate?prompt=${encodeURIComponent(prompt)}`);
+    // Navigate to generate page with prompt and model selection
+    router.push(`/generate?prompt=${encodeURIComponent(prompt)}&model=${encodeURIComponent(model)}`);
   };
 
   return (
@@ -30,20 +32,31 @@ export default function Home() {
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           {/* Hero Section */}
-          <h1 className="text-4xl sm:text-4xl md:text-4xl font-bold text-white mb-6">
+          <h1 className="text-4xl sm:text-4xl md:text-4xl font-bold text-white mb-6 mt-16">
             Build something with Lovable-clone
           </h1>
-          <h3 className="text-xl sm:text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
-            BUILT WITH CLAUDE CODE
+          <h3 className="text-xl sm:text-xl text-gray-300 mb-4 max-w-2xl mx-auto">
+            BUILT WITH AI & DAYTONA
           </h3>
 
-          <p className="text-xl sm:text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
-            Turn your ideas into production-ready code in minutes. Powered by
-            Claude's advanced AI capabilities.
+          <p className="text-lg sm:text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
+            Turn your ideas into production-ready code in minutes.
           </p>
 
           {/* Input Section */}
           <div className="relative max-w-2xl mx-auto">
+            <div className="mb-4 flex items-center justify-center gap-4">
+              <span className="text-sm font-medium text-gray-400">Select Model:</span>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+              >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+              </select>
+            </div>
             <div className="relative flex items-center bg-black rounded-2xl border border-gray-800 shadow-2xl px-2">
               {/* Textarea */}
               <textarea

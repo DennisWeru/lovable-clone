@@ -15,10 +15,13 @@ interface Message {
   sandboxId?: string;
 }
 
-export default function GeneratePage() {
+import { Suspense } from "react";
+
+function GenerateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const prompt = searchParams.get("prompt") || "";
+  const model = searchParams.get("model") || "gemini-2.5-flash";
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -59,7 +62,7 @@ export default function GeneratePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, model }),
       });
 
       if (!response.ok) {
@@ -256,5 +259,13 @@ export default function GeneratePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>}>
+      <GenerateContent />
+    </Suspense>
   );
 }

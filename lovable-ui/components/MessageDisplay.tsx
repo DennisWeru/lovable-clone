@@ -22,15 +22,15 @@ export default function MessageDisplay({ messages }: MessageDisplayProps) {
         const match = path.match(/\/app\/([^\/]+)\//);
         return match ? `/${match[1]}` : null;
       })
-      .filter(Boolean);
+      .filter((p): p is string => p !== null);
     
-    setGeneratedPages([...new Set(pages)]);
+    setGeneratedPages(Array.from(new Set(pages)));
   }, [messages]);
   
   if (messages.length === 0) return null;
   
   // Filter to show only assistant messages and tool uses
-  const displayMessages = messages.filter(m => 
+  const displayMessages = messages.filter((m: any) =>
     m.type === 'assistant' || m.type === 'tool_use' || m.type === 'result'
   );
   
@@ -57,9 +57,10 @@ export default function MessageDisplay({ messages }: MessageDisplayProps) {
         </div>
         
         <div className="space-y-3">
-          {displayMessages.map((message, index) => {
+          {displayMessages.map((msg, index) => {
+            const message = msg as any;
             // Assistant messages
-            if (message.type === 'assistant' && (message as any).message?.content) {
+            if (message.type === 'assistant' && message.message?.content) {
               const content = (message as any).message.content;
               const textContent = Array.isArray(content) 
                 ? content.find((c: any) => c.type === 'text')?.text 
@@ -78,8 +79,8 @@ export default function MessageDisplay({ messages }: MessageDisplayProps) {
             
             // Tool uses - show as compact status
             if (message.type === 'tool_use') {
-              const toolName = (message as any).name;
-              const input = (message as any).input;
+              const toolName = message.name;
+              const input = message.input;
               
               return (
                 <div key={index} className="animate-fadeIn">
@@ -103,17 +104,17 @@ export default function MessageDisplay({ messages }: MessageDisplayProps) {
             }
             
             // Final result
-            if (message.type === 'result' && (message as any).subtype === 'success') {
+            if (message.type === 'result' && message.subtype === 'success') {
               return (
                 <div key={index} className="animate-fadeIn mt-4">
                   <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
                     <div className="text-green-400 font-semibold mb-2">✅ Generation Complete</div>
                     <div className="text-gray-300 text-sm">
-                      {(message as any).result}
+                      {message.result}
                     </div>
-                    {(message as any).total_cost_usd && (
+                    {message.total_cost_usd && (
                       <div className="text-xs text-gray-500 mt-2">
-                        Cost: ${(message as any).total_cost_usd.toFixed(4)}
+                        Cost: ${message.total_cost_usd.toFixed(4)}
                       </div>
                     )}
                   </div>
