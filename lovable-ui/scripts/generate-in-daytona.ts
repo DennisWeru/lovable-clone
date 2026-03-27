@@ -19,17 +19,17 @@ async function generateWebsiteInDaytona(
   const isGemini = model.startsWith("gemini");
 
   if (!process.env.DAYTONA_API_KEY) {
-    console.error("ERROR: DAYTONA_API_KEY must be set");
+    console.log('__ERROR__', JSON.stringify({ code: 'MISSING_API_KEY', message: 'DAYTONA_API_KEY must be set' }));
     process.exit(1);
   }
 
   if (isClaude && !process.env.ANTHROPIC_API_KEY) {
-    console.error("ERROR: ANTHROPIC_API_KEY must be set for Claude models");
+    console.log('__ERROR__', JSON.stringify({ code: 'MISSING_API_KEY', message: 'ANTHROPIC_API_KEY must be set for Claude models' }));
     process.exit(1);
   }
 
   if (isGemini && !process.env.GEMINI_API_KEY) {
-    console.error("ERROR: GEMINI_API_KEY must be set for Gemini models");
+    console.log('__ERROR__', JSON.stringify({ code: 'MISSING_API_KEY', message: 'GEMINI_API_KEY must be set for Gemini models' }));
     process.exit(1);
   }
 
@@ -48,17 +48,23 @@ async function generateWebsiteInDaytona(
       const sandboxes = await daytona.list();
       sandbox = sandboxes.find((s: any) => s.id === sandboxId);
       if (!sandbox) {
+        console.log('__ERROR__', JSON.stringify({ code: 'SANDBOX_NOT_FOUND', message: `Sandbox ${sandboxId} not found` }));
         throw new Error(`Sandbox ${sandboxId} not found`);
       }
       console.log(`✓ Connected to sandbox: ${sandbox.id}`);
     } else {
       console.log("1. Creating new Daytona sandbox...");
-      sandbox = await daytona.create({
-        public: true,
-        image: "node:20",
-      });
-      sandboxId = sandbox.id;
-      console.log(`✓ Sandbox created: ${sandboxId}`);
+      try {
+        sandbox = await daytona.create({
+          public: true,
+          image: "node:20",
+        });
+        sandboxId = sandbox.id;
+        console.log(`✓ Sandbox created: ${sandboxId}`);
+      } catch (e: any) {
+        console.log('__ERROR__', JSON.stringify({ code: 'SANDBOX_CREATION_FAILED', message: e.message }));
+        throw e;
+      }
     }
 
     // Get the root directory
@@ -73,8 +79,8 @@ async function generateWebsiteInDaytona(
       console.log("\n2. Detecting existing project context and decisions log...");
       try {
         const lsResult = await sandbox.process.executeCommand("find . -maxdepth 3 -not -path '*/.*' -not -path '*/node_modules/*'", projectDir);
-        const packageJson = await sandbox.process.executeCommand("cat package.json", projectDir);
-        const decisionsLog = await sandbox.process.executeCommand("cat decisions_log.md", projectDir);
+        const packageJson = await sandbox.process.executeCommand("cat package.json || echo '{}'", projectDir);
+        const decisionsLog = await sandbox.process.executeCommand("cat decisions_log.md || echo ''", projectDir);
         
         const conversationHistory = process.env.CONVERSATION_HISTORY || "";
 
@@ -126,7 +132,7 @@ async function generateWebsiteInDaytona(
       );
 
       if (installResult.exitCode !== 0) {
-        console.error("Installation failed:", installResult.result);
+        console.log('__ERROR__', JSON.stringify({ code: 'NPM_INSTALL_FAILED', message: `Failed to install AI SDK: ${installResult.result}` }));
         throw new Error("Failed to install AI SDK");
       }
       console.log("✓ AI SDK installed");
@@ -181,9 +187,8 @@ async function generateWebsiteInDaytona(
       let parsed;
       try {
         parsed = JSON.parse(output);
-      } catch (e) {
-        console.error("Failed to parse Gemini JSON output", e);
-        console.log('Raw output:', output);
+      } catch (e: any) {
+        console.log('__ERROR__', JSON.stringify({ code: 'AI_PARSE_ERROR', message: "Failed to parse AI response as JSON" }));
         throw new Error("Failed to parse Gemini JSON output. Make sure the AI returns valid JSON.");
       }
 
@@ -260,6 +265,7 @@ async function generateWebsiteInDaytona(
       );
 
       if (npmInstall.exitCode !== 0) {
+        console.log('__ERROR__', JSON.stringify({ code: 'NPM_INSTALL_FAILED', message: `Project dependencies installation failed: ${npmInstall.result}` }));
         console.log("Warning: npm install had issues:", npmInstall.result);
       } else {
         console.log("✓ Dependencies installed");
@@ -267,6 +273,13 @@ async function generateWebsiteInDaytona(
 
       // Step 7: Start dev server in background
       console.log("\n7. Starting development server in background...");
+
+      // Clean up any existing process on port 3000
+      console.log("Cleaning up existing processes on port 3000...");
+      await sandbox.process.executeCommand(
+        "fuser -k 3000/tcp || true",
+        projectDir
+      );
 
       // Start the server in background using nohup
       await sandbox.process.executeCommand(
@@ -290,6 +303,7 @@ async function generateWebsiteInDaytona(
       if (checkServer.result?.trim() === '200') {
         console.log("✓ Server is running!");
       } else {
+        console.log('__ERROR__', JSON.stringify({ code: 'SERVER_START_TIMEOUT', message: 'Development server is taking too long to start' }));
         console.log("⚠️  Server might still be starting...");
         console.log("You can check logs with: cat dev-server.log");
       }

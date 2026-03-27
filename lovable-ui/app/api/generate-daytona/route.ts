@@ -221,6 +221,22 @@ export async function POST(req: NextRequest) {
               // Skip tool results for now to reduce noise
               continue;
             }
+            // Parse Error messages
+            else if (line.includes('__ERROR__')) {
+              const jsonStart = line.indexOf('__ERROR__') + '__ERROR__'.length;
+              try {
+                const error = JSON.parse(line.substring(jsonStart).trim());
+                await writer.write(
+                  encoder.encode(`data: ${JSON.stringify({
+                    type: "error",
+                    code: error.code,
+                    message: error.message
+                  })}\n\n`)
+                );
+              } catch (e) {
+                // Ignore parse errors
+              }
+            }
             // Regular progress messages
             else {
               const output = line.trim();
