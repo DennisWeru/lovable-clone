@@ -42,7 +42,7 @@ async function startDevServer(sandboxId: string, projectPath: string = "website-
     // Kill any existing dev server
     console.log("Stopping any existing dev server...");
     await sandbox.process.executeCommand(
-      "pkill -f 'npm run dev' || true",
+      "fuser -k 3000/tcp || pkill -f 'npm run dev' || true",
       projectDir
     );
     

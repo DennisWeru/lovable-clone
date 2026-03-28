@@ -11,6 +11,7 @@ interface Message {
   input?: any;
   result?: any;
   message?: string;
+  code?: string;
   previewUrl?: string;
   sandboxId?: string;
   metadata?: any;
@@ -33,8 +34,9 @@ function GenerateContent() {
   const [sandboxId, setSandboxId] = useState<string | null>(initialSandboxId);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [inputValue, setInputValue] = useState("");
+  const [lastPrompt, setLastPrompt] = useState<string>(prompt);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
   
@@ -59,6 +61,7 @@ function GenerateContent() {
     hasStartedRef.current = true;
     
     const init = async () => {
+      setLastPrompt(prompt);
       // Load history first if we have a projectId (continuing a project)
       if (projectId) {
         setIsLoadingHistory(true);
@@ -98,6 +101,7 @@ function GenerateContent() {
   
   const generateWebsite = async (currentPrompt: string) => {
     try {
+      setLastPrompt(currentPrompt);
       setError(null);
       setIsGenerating(true);
       
@@ -146,7 +150,10 @@ function GenerateContent() {
               const message = JSON.parse(data) as Message;
               
               if (message.type === "error") {
-                setError(message.message || "An error occurred");
+                setError({
+                  message: message.message || "An error occurred",
+                  code: message.code
+                });
                 // Don't throw here to allow partial messages to stay
               } else if (message.type === "complete") {
                 setPreviewUrl(message.previewUrl || null);
@@ -165,7 +172,7 @@ function GenerateContent() {
       }
     } catch (err: any) {
       console.error("Error generating website:", err);
-      setError(err.message || "An error occurred");
+      setError({ message: err.message || "An error occurred" });
     } finally {
       setIsGenerating(false);
     }
@@ -182,6 +189,122 @@ function GenerateContent() {
     // Actually, Lovable replies with progress messages
     
     generateWebsite(userMessage);
+  };
+
+  const handleRestartServer = async () => {
+    if (!sandboxId || isGenerating) return;
+
+    try {
+      setError(null);
+      setIsGenerating(true);
+      setMessages((prev) => [...prev, { type: "progress", message: "Restarting development server..." }]);
+
+      const response = await fetch("/api/restart-server", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sandboxId, projectId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to restart server");
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No response body");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") break;
+
+            try {
+              const message = JSON.parse(data) as Message;
+              if (message.type === "error") {
+                setError({
+                  message: message.message || "An error occurred",
+                  code: message.code
+                });
+              } else if (message.type === "complete") {
+                setPreviewUrl(message.previewUrl || null);
+              } else {
+                setMessages((prev) => [...prev, message]);
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (err: any) {
+      setError({ message: err.message || "An error occurred" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const getFriendlyError = (error: { message: string; code?: string }) => {
+    // If sandbox not found, clear it so next retry creates a new one
+    if (error.code === "SANDBOX_NOT_FOUND" && sandboxId) {
+      setSandboxId(null);
+    }
+
+    switch (error.code) {
+      case "SANDBOX_NOT_FOUND":
+        return {
+          title: "Sandbox session lost",
+          description: "We couldn't find your sandbox. This might happen if it was inactive for too long.",
+          action: "Try starting over by clicking Retry.",
+          canRetry: true,
+        };
+      case "SANDBOX_CREATION_FAILED":
+        return {
+          title: "Failed to create sandbox",
+          description: "There was an issue spinning up your environment. This might be a temporary Daytona outage.",
+          action: "Please try again in a moment.",
+          canRetry: true,
+        };
+      case "NPM_INSTALL_FAILED":
+        return {
+          title: "Installation issue",
+          description: "We had some trouble installing the necessary packages for your app.",
+          action: "You can try to Retry the process.",
+          canRetry: true,
+        };
+      case "AI_PARSE_ERROR":
+        return {
+          title: "AI Response Glitch",
+          description: "The AI gave us a response we didn't quite understand. It happens sometimes with complex requests!",
+          action: "Try hitting Retry to let it try again.",
+          canRetry: true,
+        };
+      case "SERVER_START_TIMEOUT":
+        return {
+          title: "Server taking its time",
+          description: "Your app is being generated, but the preview server is taking longer than usual to start.",
+          action: "You can wait another minute or try to manually restart the server.",
+          canRestart: true,
+        };
+      case "MISSING_API_KEY":
+        return {
+          title: "Configuration Error",
+          description: "One of the required API keys is missing from our server configuration.",
+          action: "Please check your .env file or contact the administrator.",
+        };
+      default:
+        return {
+          title: "Something went wrong",
+          description: error.message,
+          action: "Try hitting Retry or check your request.",
+          canRetry: true,
+        };
+    }
   };
   
   const formatToolInput = (input: any) => {
@@ -295,8 +418,31 @@ function GenerateContent() {
             )}
             
             {error && (
-              <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
-                <p className="text-red-400">{error}</p>
+              <div className="bg-red-900/20 border border-red-700 rounded-lg p-4 space-y-3">
+                <div>
+                  <h3 className="text-red-400 font-semibold">{getFriendlyError(error).title}</h3>
+                  <p className="text-red-300/80 text-sm mt-1">{getFriendlyError(error).description}</p>
+                  <p className="text-red-300/60 text-xs mt-2 italic">{getFriendlyError(error).action}</p>
+                </div>
+
+                <div className="flex gap-2">
+                  {getFriendlyError(error).canRetry && (
+                    <button
+                      onClick={() => generateWebsite(lastPrompt)}
+                      className="px-3 py-1.5 bg-red-600/30 hover:bg-red-600/40 text-red-200 text-xs rounded-md border border-red-500/30 transition-colors"
+                    >
+                      ↺ Retry
+                    </button>
+                  )}
+                  {getFriendlyError(error).canRestart && (
+                    <button
+                      onClick={handleRestartServer}
+                      className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/40 text-blue-200 text-xs rounded-md border border-blue-500/30 transition-colors"
+                    >
+                      ⚡ Restart Server
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             
