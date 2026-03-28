@@ -27,45 +27,51 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
+  // Using a try-catch to ensure the middleware NEVER crashes the whole app
+  try {
+    const {
+      data,
+      error
+    } = await supabase.auth.getUser()
+    
+    const user = data?.user
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const isAuthRoute = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup')
+    const isDashboardRoute = request.nextUrl.pathname.startsWith('/dashboard')
+    const isAdminRoute = request.nextUrl.pathname.startsWith('/admin')
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup')
-  const isDashboardRoute = request.nextUrl.pathname.startsWith('/dashboard')
-  const isAdminRoute = request.nextUrl.pathname.startsWith('/admin')
+    // Redirect to login if unauthenticated user tries to access dashboard or admin
+    if (!user && (isDashboardRoute || isAdminRoute)) {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/login'
+      return NextResponse.redirect(redirectUrl)
+    }
 
-  // Redirect to login if unauthenticated user tries to access dashboard or admin
-  if (!user && (isDashboardRoute || isAdminRoute)) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/login'
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  // Redirect to dashboard if authenticated user tries to access login or signup
-  if (user && isAuthRoute) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/dashboard'
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  // Admin route protection
-  if (user && isAdminRoute) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
+    // Redirect to dashboard if authenticated user tries to access login or signup
+    if (user && isAuthRoute) {
       const redirectUrl = request.nextUrl.clone()
       redirectUrl.pathname = '/dashboard'
       return NextResponse.redirect(redirectUrl)
     }
+
+    // Admin route protection
+    if (user && isAdminRoute) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (profile?.role !== 'admin') {
+        const redirectUrl = request.nextUrl.clone()
+        redirectUrl.pathname = '/dashboard'
+        return NextResponse.redirect(redirectUrl)
+      }
+    }
+  } catch (e) {
+    // If auth check fails, we still return the response to avoid crashing the site.
+    // The API routes or Server Components will handle auth check again.
+    console.error("[Middleware] Auth check crashed:", e)
   }
 
   return supabaseResponse

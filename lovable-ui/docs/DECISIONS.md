@@ -108,3 +108,17 @@ The application encountered an HTTP 500 error in production. The frontend displa
 - **Environment Variable Validation**: Added explicit checks for `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `DAYTONA_API_KEY` at the start of the `POST` handler. If these are missing in production settings, the API now returns a descriptive error message instead of failing silently with placeholder keys.
 - **Enhanced Frontend Error Reporting**: Updated the `fetch` error handler in `app/generate/page.tsx` to include the first 100 characters of any non-JSON response in the UI error message. This will allow for faster debugging of Vercel-level crashes or timeouts by surfacing the HTML error snippet directly to the user.
 - **Improved Logging**: Added more detailed `console.error` logs on the server for authentication and profile fetch failures to assist in monitoring via Vercel Logs.
+
+## 2026-03-28 - Middleware Crash & Unsafe Auth Destructuring Fix
+
+### Problem
+Despite previous fixes, the application returned a generic 500 HTML error page. This indicated a crash *before* the API route handler, specifically in the **Middleware**. The root cause was unsafe destructuring of the Supabase auth response: `const { data: { user } } = await supabase.auth.getUser()`. If the auth check fails (e.g. invalid cookie or session), `data` is `null`, and destructuring `user` from it throws a `TypeError`, crashing the Edge Runtime.
+
+### Decision
+- **Safe Auth Access**: Replaced all instances of `{ data: { user } }` destructuring with safer `{ data, error }` checks across `middleware.ts`, `generate-daytona/route.ts`, and `restart-server/route.ts`. 
+- **Middleware Safety Net**: Wrapped the entire `updateSession` logic in `lib/supabase/middleware.ts` in a `try-catch` block. If the auth logic crashes for any reason (environment issues, network errors, etc.), the middleware now logs the error and allows the request to proceed to the next handler instead of returning a hard 500 error page.
+- **Consistency**: Ensured all auth-reliant routes use `const user = data?.user` to prevent similar crashes in the future.
+
+### Impact
+- The application is now resilient to middleware-level crashes.
+- Auth failures now correctly result in JSON error responses from the API routes (401 Unauthorized) rather than broken HTML pages.
