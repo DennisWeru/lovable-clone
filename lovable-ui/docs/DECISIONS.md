@@ -88,3 +88,12 @@ Each generation session was ephemeral — refreshing the page lost all chat mess
 ### Impact
 - Users can now open *any* past project to view its history or try to retry/continue it.
 - The AI now understands follow-up requests within the same project context, enabling true iterative development ("make it red", "add a button", etc).
+
+## 2026-03-28 - Next.js Error Overlay and Vercel Timeout
+
+### Problem
+The application crashed on the frontend with the error `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` when trying to parse the response from `/api/generate-daytona` and `/api/restart-server`. This occurs when Vercel (or the local Next.js dev server) intercepts the request and returns an HTML error page (like a 504 Gateway Timeout or 500 Server Error) instead of a JSON response. 
+
+### Decision
+- **Graceful Error Handling**: Modified the `fetch` error handling in `app/generate/page.tsx` (`generateWebsite` and `handleRestartServer` functions). Before calling `response.json()`, the code now checks the `Content-Type` header. If it isn't `application/json`, it reads the response as text and throws a specific error mentioning a potential Vercel timeout or configuration issue. This prevents the cryptic `JSON.parse` error and provides clearer feedback.
+- **Vercel Timeout Extension**: Since generating a project in Daytona can easily exceed the default 10-15 second Serverless Function timeout on Vercel, `export const maxDuration = 300;` was added to both `app/api/generate-daytona/route.ts` and `app/api/restart-server/route.ts`. This permits the Next.js API routes to run for up to 5 minutes on Vercel before being terminated, ensuring generation streams can initialize properly.

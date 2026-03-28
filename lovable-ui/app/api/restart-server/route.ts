@@ -3,6 +3,8 @@ import { spawn } from "child_process";
 import path from "path";
 import { createClient } from "@/lib/supabase/server";
 
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = createClient();

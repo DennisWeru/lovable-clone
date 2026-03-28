@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateWebsiteInDaytona } from "@/lib/generation/daytona";
 
+export const maxDuration = 300;
+
 const GENERATION_COST = 100;
 
 export async function POST(req: NextRequest) {

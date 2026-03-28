@@ -119,7 +119,18 @@ function GenerateContent() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            errorData = await response.json();
+          } else {
+            const textResponse = await response.text();
+            throw new Error(`Server returned unexpected format (HTTP ${response.status}). This could be a Vercel timeout or configuration issue.`);
+          }
+        } catch (e: any) {
+          throw new Error(errorData?.error || e.message || "Failed to generate website");
+        }
         throw new Error(errorData.error || "Failed to generate website");
       }
 
@@ -206,7 +217,18 @@ function GenerateContent() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            errorData = await response.json();
+          } else {
+            const textResponse = await response.text();
+            throw new Error(`Server returned unexpected format (HTTP ${response.status}).`);
+          }
+        } catch (e: any) {
+          throw new Error(errorData?.error || e.message || "Failed to restart server");
+        }
         throw new Error(errorData.error || "Failed to restart server");
       }
 
