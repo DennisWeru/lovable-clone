@@ -98,7 +98,8 @@ export async function POST(req: NextRequest) {
       sandboxId = sandbox.id;
     }
 
-    // 4. Prepare Worker Script (Bundled as constant to avoid fs issues on Vercel)
+    // 4. Prepare Worker Script (Bundled as constant)
+    console.log("[API] Preparing worker script...");
     const workerContent = `
 import { execSync } from "child_process";
 console.log("[Worker] Bootstrapping...");
@@ -137,7 +138,7 @@ async function run() {
 
     const result = await model.generateContent(PROMPT);
     const text = result.response.text();
-    const cleanJson = text.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+    const cleanJson = text.replace(/\\\`\\\`\\\`json/g, "").replace(/\\\`\\\`\\\`/g, "").trim();
     const parsed = JSON.parse(cleanJson);
 
     if (parsed.files) {
@@ -159,10 +160,11 @@ run();
 
     // 5. Upload and Execute in Daytona
     const workerPath = "/home/daytona/scripts/generation-worker.ts";
+    console.log("[API] Accessing Daytona sandbox...");
     await sandbox.process.executeCommand("mkdir -p /home/daytona/scripts", "/home/daytona");
     
     const base64Worker = Buffer.from(workerContent).toString("base64");
-    console.log("[API] Uploading worker to Daytona...");
+    console.log("[API] Uploading script (base64 length:", base64Worker.length, ")");
     await sandbox.process.executeCommand(
        `echo "${base64Worker}" | base64 -d > ${workerPath}`,
        "/home/daytona"
@@ -173,12 +175,11 @@ run();
     const host = req.headers.get("host") || "localhost:3000";
     let webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
 
-    // Support override for local development tunnels (ngrok, etc.)
     if (process.env.WEBHOOK_BASE_URL) {
       webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
     }
 
-    // DETACH: Run in background with nohup
+    console.log("[API] Triggering detached execution...");
     const env = {
        GENERATION_PROMPT: prompt,
        GENERATION_MODEL: model || "gemini-1.5-flash",
@@ -190,16 +191,14 @@ run();
        IS_FOLLOW_UP: existingSandboxId ? "true" : "false"
     };
 
-    const envString = Object.entries(env).map(([k, v]) => `${k}="${v}"`).join(" ");
-    
     // Background execution
     sandbox.process.executeCommand(
-       `nohup npx -y tsx scripts/generation-worker.ts > worker.log 2>&1 &`,
+       `nohup npx -y tsx ${workerPath} > /home/daytona/worker.log 2>&1 &`,
        "/home/daytona",
        env
     ).catch(e => console.error("[API] Detached execution failed trigger:", e));
 
-    // Return IMMEDIATELY (Vercel sees < 2s duration)
+    console.log("[API] Returning success to client.");
     return NextResponse.json({
        success: true,
        projectId: projectRecord.id,
