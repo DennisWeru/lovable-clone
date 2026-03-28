@@ -5,6 +5,19 @@ import crypto from "crypto";
 
 export const maxDuration = 60; 
 
+export async function GET() {
+  return NextResponse.json({
+    status: "ok",
+    env: {
+      hasDaytonaKey: !!process.env.DAYTONA_API_KEY,
+      hasGeminiKey: !!process.env.GEMINI_API_KEY,
+      hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      hasSupabaseRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    },
+    nodeVersion: process.version,
+  });
+}
+
 export async function POST(req: NextRequest) {
   console.log("[API] --- Generation Request Start ---");
   try {
