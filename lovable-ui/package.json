@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "next lint"
   },
+  "overrides": {
+    "untildify": "4.0.0"
+  },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.39",
     "@daytonaio/sdk": "^0.21.5",
