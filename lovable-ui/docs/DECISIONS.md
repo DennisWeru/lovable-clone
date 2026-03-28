@@ -120,5 +120,19 @@ Despite previous fixes, the application returned a generic 500 HTML error page. 
 - **Consistency**: Ensured all auth-reliant routes use `const user = data?.user` to prevent similar crashes in the future.
 
 ### Impact
-- The application is now resilient to middleware-level crashes.
-- Auth failures now correctly result in JSON error responses from the API routes (401 Unauthorized) rather than broken HTML pages.
+
+## 2026-03-28 - Detached Daytona Worker Architecture (Option 2)
+
+### Problem
+AI generation tasks frequently exceed Vercel's 10-60s serverless function timeouts, resulting in uncatchable 504 Gateway Timeouts or infrastructure-level 500 errors.
+
+### Decision
+- **Detached Generation**: Refactored the `/api/generate-daytona` route to instantiate a Daytona sandbox, upload a standalone worker script, and trigger it with `nohup` before returning `200 OK` immediately. This ensures Vercel only handles the initial handoff (<2s).
+- **Standalone Worker**: Created `scripts/generation-worker.ts` to execute all heavy AI and file operations directly inside the Daytona container. It is self-bootstrapping and manages its own dependencies.
+- **Webhook Updates**: Implemented a secure `/api/webhooks/daytona-progress` receiver that validates a project-specific `webhook_token` and updates the database.
+- **Supabase Realtime**: Replaced the fragile SSE (Server-Sent Events) streaming on the frontend with a Supabase Realtime subscription to the `project_messages` table.
+
+### Impact
+- **Stability**: Generation can now run for minutes (or hours) without being affected by Vercel's HTTP request limits.
+- **Reliability**: Users see real-time progress updates via Supabase even if the initial browser-server connection is severed.
+- **Scalability**: Decoupling the compute (Daytona) from the web server (Vercel) allows for much heavier generation workloads.

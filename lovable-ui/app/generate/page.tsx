@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import { createClient } from "@/lib/supabase/client";
 
 interface Message {
   type: "user" | "claude_message" | "tool_use" | "tool_result" | "progress" | "error" | "complete";
@@ -107,85 +108,65 @@ function GenerateContent() {
       
       const response = await fetch("/api/generate-daytona", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           prompt: currentPrompt, 
           model, 
-          sandboxId: sandboxId,     // existing sandbox to reuse
-          projectId: projectId,     // so the API can fetch conversation history
+          sandboxId: sandboxId,
+          projectId: projectId,
         }),
       });
 
       if (!response.ok) {
-        let errorData;
-        try {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            errorData = await response.json();
-          } else {
-            const textResponse = await response.text();
-            console.error("Non-JSON error response:", textResponse);
-            throw new Error(`Server returned unexpected format (HTTP ${response.status}): ${textResponse.substring(0, 100)}...`);
-          }
-        } catch (e: any) {
-          throw new Error(errorData?.error || e.message || "Failed to generate website");
-        }
+        const errorData = await response.json().catch(() => ({ error: "Failed to generate website" }));
         throw new Error(errorData.error || "Failed to generate website");
       }
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
+      const data = await response.json();
+      const currentProjectId = data.projectId;
+      if (data.sandboxId) setSandboxId(data.sandboxId);
 
-      if (!reader) {
-        throw new Error("No response body");
-      }
+      // Start Realtime Subscription
+      const supabase = createClient();
+      const channel = supabase
+        .channel(`project-progress-${currentProjectId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "project_messages",
+            filter: `project_id=eq.${currentProjectId}`,
+          },
+          (payload) => {
+            const newMessage = payload.new as any;
+            const message: Message = {
+              type: newMessage.type,
+              content: newMessage.content ?? undefined,
+              name: newMessage.metadata?.name,
+              input: newMessage.metadata?.input,
+              previewUrl: newMessage.type === "complete" ? newMessage.content : undefined,
+              sandboxId: newMessage.type === "complete" ? data.sandboxId : undefined,
+            };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-
-            if (data === "[DONE]") {
+            if (message.type === "error") {
+              setError({ message: message.content || "An error occurred" });
               setIsGenerating(false);
-              break;
-            }
-
-            try {
-              const message = JSON.parse(data) as Message;
-              
-              if (message.type === "error") {
-                setError({
-                  message: message.message || "An error occurred",
-                  code: message.code
-                });
-                // Don't throw here to allow partial messages to stay
-              } else if (message.type === "complete") {
-                setPreviewUrl(message.previewUrl || null);
-                if (message.sandboxId) {
-                  setSandboxId(message.sandboxId);
-                }
-                setIsGenerating(false);
-              } else {
-                setMessages((prev) => [...prev, message]);
-              }
-            } catch (e) {
-              // Ignore parse errors
+            } else if (message.type === "complete") {
+              const preview = newMessage.content;
+              setPreviewUrl(preview);
+              setIsGenerating(false);
+              channel.unsubscribe();
+            } else {
+              setMessages((prev) => [...prev, message]);
             }
           }
-        }
-      }
+        )
+        .subscribe();
+
     } catch (err: any) {
       console.error("Error generating website:", err);
       setError({ message: err.message || "An error occurred" });
-    } finally {
       setIsGenerating(false);
     }
   };
