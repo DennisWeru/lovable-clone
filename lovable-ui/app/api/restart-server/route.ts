@@ -15,13 +15,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { sandboxId } = await req.json();
+    const { sandboxId, projectId } = await req.json();
 
     if (!sandboxId) {
       return new Response(
         JSON.stringify({ error: "Sandbox ID is required" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
+    }
+
+    // Verify ownership if projectId is provided
+    if (projectId) {
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("user_id")
+        .eq("id", projectId)
+        .single();
+
+      if (projectError || !project || project.user_id !== user.id) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden. You do not own this project." }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
     }
 
     if (!process.env.DAYTONA_API_KEY) {

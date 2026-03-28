@@ -36,6 +36,7 @@ function GenerateContent() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [inputValue, setInputValue] = useState("");
+  const [lastPrompt, setLastPrompt] = useState<string>(prompt);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
   
@@ -60,6 +61,7 @@ function GenerateContent() {
     hasStartedRef.current = true;
     
     const init = async () => {
+      setLastPrompt(prompt);
       // Load history first if we have a projectId (continuing a project)
       if (projectId) {
         setIsLoadingHistory(true);
@@ -99,6 +101,7 @@ function GenerateContent() {
   
   const generateWebsite = async (currentPrompt: string) => {
     try {
+      setLastPrompt(currentPrompt);
       setError(null);
       setIsGenerating(true);
       
@@ -169,7 +172,7 @@ function GenerateContent() {
       }
     } catch (err: any) {
       console.error("Error generating website:", err);
-      setError(err.message || "An error occurred");
+      setError({ message: err.message || "An error occurred" });
     } finally {
       setIsGenerating(false);
     }
@@ -199,7 +202,7 @@ function GenerateContent() {
       const response = await fetch("/api/restart-server", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sandboxId }),
+        body: JSON.stringify({ sandboxId, projectId }),
       });
 
       if (!response.ok) {
@@ -226,7 +229,10 @@ function GenerateContent() {
             try {
               const message = JSON.parse(data) as Message;
               if (message.type === "error") {
-                setError({ message: message.message || "An error occurred" });
+                setError({
+                  message: message.message || "An error occurred",
+                  code: message.code
+                });
               } else if (message.type === "complete") {
                 setPreviewUrl(message.previewUrl || null);
               } else {
@@ -244,6 +250,11 @@ function GenerateContent() {
   };
 
   const getFriendlyError = (error: { message: string; code?: string }) => {
+    // If sandbox not found, clear it so next retry creates a new one
+    if (error.code === "SANDBOX_NOT_FOUND" && sandboxId) {
+      setSandboxId(null);
+    }
+
     switch (error.code) {
       case "SANDBOX_NOT_FOUND":
         return {
@@ -417,7 +428,7 @@ function GenerateContent() {
                 <div className="flex gap-2">
                   {getFriendlyError(error).canRetry && (
                     <button
-                      onClick={() => generateWebsite(prompt)}
+                      onClick={() => generateWebsite(lastPrompt)}
                       className="px-3 py-1.5 bg-red-600/30 hover:bg-red-600/40 text-red-200 text-xs rounded-md border border-red-500/30 transition-colors"
                     >
                       ↺ Retry
