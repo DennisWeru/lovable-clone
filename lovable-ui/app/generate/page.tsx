@@ -145,16 +145,16 @@ function GenerateContent() {
               content: newMessage.content ?? undefined,
               name: newMessage.metadata?.name,
               input: newMessage.metadata?.input,
-              previewUrl: newMessage.type === "complete" ? newMessage.content : undefined,
-              sandboxId: newMessage.type === "complete" ? data.sandboxId : undefined,
+              previewUrl: newMessage.metadata?.previewUrl,
+              sandboxId: newMessage.metadata?.sandboxId,
             };
 
             if (message.type === "error") {
               setError({ message: message.content || "An error occurred" });
               setIsGenerating(false);
             } else if (message.type === "complete") {
-              const preview = newMessage.content;
-              setPreviewUrl(preview);
+              if (message.previewUrl) setPreviewUrl(message.previewUrl);
+              if (message.sandboxId) setSandboxId(message.sandboxId);
               setIsGenerating(false);
               channel.unsubscribe();
             } else {

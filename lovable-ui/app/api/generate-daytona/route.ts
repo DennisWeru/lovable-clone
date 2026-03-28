@@ -113,7 +113,12 @@ export async function POST(req: NextRequest) {
     // Determine absolute webhook URL
     const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
     const host = req.headers.get("host") || "localhost:3000";
-    const webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
+    let webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
+
+    // Support override for local development tunnels (ngrok, etc.)
+    if (process.env.WEBHOOK_BASE_URL) {
+      webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
+    }
 
     // DETACH: Run in background with nohup
     const env = {

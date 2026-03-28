@@ -119,8 +119,10 @@ async function run() {
 
     await sendUpdate("complete", { 
       message: "Generation complete!",
-      sandboxId: SANDBOX_ID,
-      previewUrl: `https://${SANDBOX_ID}.daytona.app` // Simplified URL logic
+      metadata: {
+        sandboxId: SANDBOX_ID,
+        previewUrl: `https://${SANDBOX_ID}.daytona.app`
+      }
     });
 
   } catch (error: any) {
