@@ -101,11 +101,13 @@ function GenerateContent() {
   }, [prompt, router, initialSandboxId, initialPreviewUrl, projectId]);
   
   const generateWebsite = async (currentPrompt: string) => {
+    console.log("[Generate] Starting generation for prompt:", currentPrompt);
     try {
       setLastPrompt(currentPrompt);
       setError(null);
       setIsGenerating(true);
       
+      console.log("[Generate] Calling API /api/generate-daytona...");
       const response = await fetch("/api/generate-daytona", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -117,16 +119,21 @@ function GenerateContent() {
         }),
       });
 
+      console.log("[Generate] API Response status:", response.status);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Failed to generate website" }));
-        throw new Error(errorData.error || "Failed to generate website");
+        const errorData = await response.json().catch(() => ({ error: "Server returned error (non-JSON)" }));
+        console.error("[Generate] API error data:", errorData);
+        throw new Error(errorData.error || `Server error: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log("[Generate] API success data:", data);
       const currentProjectId = data.projectId;
       if (data.sandboxId) setSandboxId(data.sandboxId);
 
       // Start Realtime Subscription
+      console.log("[Generate] Initializing Supabase Realtime for Project:", currentProjectId);
       const supabase = createClient();
       const channel = supabase
         .channel(`project-progress-${currentProjectId}`)
@@ -139,6 +146,7 @@ function GenerateContent() {
             filter: `project_id=eq.${currentProjectId}`,
           },
           (payload) => {
+            console.log("[Generate] Realtime Event Received:", payload);
             const newMessage = payload.new as any;
             const message: Message = {
               type: newMessage.type,
