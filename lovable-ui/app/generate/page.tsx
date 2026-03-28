@@ -126,7 +126,8 @@ function GenerateContent() {
             errorData = await response.json();
           } else {
             const textResponse = await response.text();
-            throw new Error(`Server returned unexpected format (HTTP ${response.status}). This could be a Vercel timeout or configuration issue.`);
+            console.error("Non-JSON error response:", textResponse);
+            throw new Error(`Server returned unexpected format (HTTP ${response.status}): ${textResponse.substring(0, 100)}...`);
           }
         } catch (e: any) {
           throw new Error(errorData?.error || e.message || "Failed to generate website");

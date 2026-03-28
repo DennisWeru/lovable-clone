@@ -97,3 +97,14 @@ The application crashed on the frontend with the error `Unexpected token '<', "<
 ### Decision
 - **Graceful Error Handling**: Modified the `fetch` error handling in `app/generate/page.tsx` (`generateWebsite` and `handleRestartServer` functions). Before calling `response.json()`, the code now checks the `Content-Type` header. If it isn't `application/json`, it reads the response as text and throws a specific error mentioning a potential Vercel timeout or configuration issue. This prevents the cryptic `JSON.parse` error and provides clearer feedback.
 - **Vercel Timeout Extension**: Since generating a project in Daytona can easily exceed the default 10-15 second Serverless Function timeout on Vercel, `export const maxDuration = 300;` was added to both `app/api/generate-daytona/route.ts` and `app/api/restart-server/route.ts`. This permits the Next.js API routes to run for up to 5 minutes on Vercel before being terminated, ensuring generation streams can initialize properly.
+
+## 2026-03-28 - Production 500 Error Debugging & Robustness
+
+### Problem
+The application encountered an HTTP 500 error in production. The frontend displayed "Server returned unexpected format," indicating that the server returned a non-JSON response (likely a Vercel HTML error page).
+
+### Decision
+- **NextResponse and Robust Returns**: Refactored `app/api/generate-daytona/route.ts` to use `NextResponse.json()` for all early error returns. This ensures that even if an error occurs early (missing credits, auth failure, etc.), the client receives valid JSON with a 500 (or 401/403) status, rather than a raw `Response` that might be mangled by Vercel or middleware.
+- **Environment Variable Validation**: Added explicit checks for `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `DAYTONA_API_KEY` at the start of the `POST` handler. If these are missing in production settings, the API now returns a descriptive error message instead of failing silently with placeholder keys.
+- **Enhanced Frontend Error Reporting**: Updated the `fetch` error handler in `app/generate/page.tsx` to include the first 100 characters of any non-JSON response in the UI error message. This will allow for faster debugging of Vercel-level crashes or timeouts by surfacing the HTML error snippet directly to the user.
+- **Improved Logging**: Added more detailed `console.error` logs on the server for authentication and profile fetch failures to assist in monitoring via Vercel Logs.
