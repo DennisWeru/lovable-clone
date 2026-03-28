@@ -2,104 +2,92 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { Daytona } from "@daytonaio/sdk";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 
-export const maxDuration = 60; // Keep within Hobby limit, but we return in < 5s anyway
-
-const GENERATION_COST = 100;
+export const maxDuration = 60; 
 
 export async function POST(req: NextRequest) {
+  console.log("[API] --- Generation Request Start ---");
   try {
-    // 1. Basic Environment Check
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("[API] Critical: Missing Supabase Environment Variables");
-      return NextResponse.json(
-        { error: "Server configuration error: Missing Supabase keys" },
-        { status: 500 }
-      );
-    }
+    // 1. Inputs
+    const body = await req.json().catch(() => ({}));
+    const { prompt, model, sandboxId: existingSandboxId, projectId } = body;
+    console.log("[API] Inputs:", { prompt: prompt?.slice(0, 30), model, sandboxId: existingSandboxId, projectId });
+
+    if (!prompt) return NextResponse.json({ error: "No prompt provided" }, { status: 400 });
+
+    // 2. Auth & Environment
+    const supabaseAdmin = createAdminClient();
+    const supabase = createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const userRole = authData?.user?.id || "anonymous";
 
     if (!process.env.DAYTONA_API_KEY || !process.env.GEMINI_API_KEY) {
-       return NextResponse.json(
-        { error: "Server configuration error: Missing AI or Daytona API keys" },
-        { status: 500 }
-      );
+      console.error("[API] Missing API Keys");
+      return NextResponse.json({ error: "Server Configuration Error: API Keys missing" }, { status: 500 });
     }
 
-    const supabase = createClient();
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    const user = authData?.user;
-
-    if (authError || !user) {
-      console.error("[API] Auth error or No user:", authError);
-      return NextResponse.json(
-        { error: "Unauthorized. Please log in to generate code." },
-        { status: 401 }
-      );
-    }
-
-    const supabaseAdmin = createAdminClient();
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("credits")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profile) {
-      return NextResponse.json({ error: "Could not fetch user profile" }, { status: 500 });
-    }
-
-    if (profile.credits < GENERATION_COST) {
-      return NextResponse.json({ error: `Insufficient credits. Need ${GENERATION_COST}.` }, { status: 403 });
-    }
-
-    const { prompt, model, sandboxId: existingSandboxId } = await req.json();
-    if (!prompt) return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
-
-    // Generate Secure Webhook Token
     const webhookToken = crypto.randomUUID();
+    console.log("[API] Webhook token generated");
 
-    // Deduct credits and Create project record
-    const { data: projectRecord, error: projectError } = await supabaseAdmin
-      .from("projects")
-      .insert({
-        user_id: user.id,
-        prompt: prompt,
-        model: model || "gemini-1.5-flash",
-        status: "pending",
-        sandbox_id: existingSandboxId,
-        webhook_token: webhookToken
-      })
-      .select()
-      .single();
-
-    if (projectError || !projectRecord) {
-      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    // 3. Database Project Record
+    let projectRecord;
+    if (projectId) {
+      console.log("[API] Updating project:", projectId);
+      const { data, error } = await supabaseAdmin
+        .from("projects")
+        .update({ webhook_token: webhookToken })
+        .eq("id", projectId)
+        .select()
+        .single();
+      if (error) throw new Error(`DB Update Error: ${error.message}`);
+      projectRecord = data;
+    } else {
+      console.log("[API] Inserting new project...");
+      const { data, error } = await supabaseAdmin
+        .from("projects")
+        .insert({
+          name: prompt.split(" ").slice(0, 5).join(" "),
+          prompt: prompt,
+          model: model || "gemini-1.5-flash",
+          user_id: userRole,
+          webhook_token: webhookToken,
+          status: "pending"
+        })
+        .select()
+        .single();
+      if (error) {
+        console.error("[API] DB Insert failed:", error);
+        throw new Error(`DB Insert Error: ${error.message}. Ensure 'webhook_token' column exists.`);
+      }
+      projectRecord = data;
     }
 
-    await supabaseAdmin
-      .from("profiles")
-      .update({ credits: profile.credits - GENERATION_COST })
-      .eq("id", user.id);
-
-    // Daytona Setup (Fast part)
+    // 4. Daytona Provisioning
     const daytona = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
     let sandbox;
     let sandboxId = existingSandboxId;
 
-    if (sandboxId) {
-      const sandboxes = await daytona.list();
-      sandbox = sandboxes.find((s: any) => s.id === sandboxId);
+    try {
+      if (sandboxId) {
+        console.log("[API] Finding sandbox:", sandboxId);
+        const sandboxes = await daytona.list();
+        sandbox = sandboxes.find((s: any) => s.id === sandboxId);
+      }
+      
+      if (!sandbox) {
+        console.log("[API] Creating sandbox...");
+        sandbox = await daytona.create({ 
+          public: true, 
+          image: "node:20"
+        });
+        sandboxId = sandbox.id;
+      }
+    } catch (e: any) {
+      console.error("[API] Daytona error:", e);
+      throw new Error(`Daytona sandbox failed: ${e.message}`);
     }
 
-    if (!sandbox) {
-      sandbox = await daytona.create({ public: true, image: "node:20" });
-      sandboxId = sandbox.id;
-    }
-
-    // 4. Prepare Worker Script (Bundled as constant)
-    console.log("[API] Preparing worker script...");
+    // 5. Worker Payload (Bundled)
     const workerContent = `
 import { execSync } from "child_process";
 console.log("[Worker] Bootstrapping...");
@@ -138,7 +126,9 @@ async function run() {
 
     const result = await model.generateContent(PROMPT);
     const text = result.response.text();
-    const cleanJson = text.replace(/\\\`\\\`\\\`json/g, "").replace(/\\\`\\\`\\\`/g, "").trim();
+    // Use string concatenation for backticks in embedded script
+    const tripleBacktick = String.fromCharCode(96, 96, 96);
+    const cleanJson = text.split(tripleBacktick + "json").pop().split(tripleBacktick).shift().trim();
     const parsed = JSON.parse(cleanJson);
 
     if (parsed.files) {
@@ -158,56 +148,42 @@ async function run() {
 run();
 `;
 
-    // 5. Upload and Execute in Daytona
+    // 6. Execute in Sandbox
     const workerPath = "/home/daytona/scripts/generation-worker.ts";
-    console.log("[API] Accessing Daytona sandbox...");
     await sandbox.process.executeCommand("mkdir -p /home/daytona/scripts", "/home/daytona");
-    
     const base64Worker = Buffer.from(workerContent).toString("base64");
-    console.log("[API] Uploading script (base64 length:", base64Worker.length, ")");
-    await sandbox.process.executeCommand(
-       `echo "${base64Worker}" | base64 -d > ${workerPath}`,
-       "/home/daytona"
-    );
+    await sandbox.process.executeCommand(`echo "${base64Worker}" | base64 -d > ${workerPath}`, "/home/daytona");
 
-    // Determine absolute webhook URL
     const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
     const host = req.headers.get("host") || "localhost:3000";
     let webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
+    if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
 
-    if (process.env.WEBHOOK_BASE_URL) {
-      webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
-    }
-
-    console.log("[API] Triggering detached execution...");
     const env = {
        GENERATION_PROMPT: prompt,
        GENERATION_MODEL: model || "gemini-1.5-flash",
        PROJECT_ID: projectRecord.id,
        WEBHOOK_TOKEN: webhookToken,
        WEBHOOK_URL: webhookUrl,
-       GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+       GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
        SANDBOX_ID: sandboxId,
-       IS_FOLLOW_UP: existingSandboxId ? "true" : "false"
     };
 
-    // Background execution
     sandbox.process.executeCommand(
        `nohup npx -y tsx ${workerPath} > /home/daytona/worker.log 2>&1 &`,
        "/home/daytona",
        env
-    ).catch(e => console.error("[API] Detached execution failed trigger:", e));
+    ).catch(e => console.error("[API] Detach failed:", e));
 
-    console.log("[API] Returning success to client.");
+    console.log("[API] Hand-off success.");
     return NextResponse.json({
        success: true,
        projectId: projectRecord.id,
-       sandboxId: sandboxId,
-       status: "started"
+       sandboxId: sandboxId
     });
 
-  } catch (error: any) {
-    console.error("[API] Top-level error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err: any) {
+    console.error("[API] Fatal error:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
