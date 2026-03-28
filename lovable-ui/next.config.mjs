@@ -1,10 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['@daytonaio/sdk'],
-  },
+  transpilePackages: ['@daytonaio/sdk'],
 };
 
-
-
-export default nextConfig;  
+export default nextConfig;

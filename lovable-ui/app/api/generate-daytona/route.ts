@@ -5,7 +5,9 @@ export const maxDuration = 60;
 
 export async function GET() {
   try {
+    console.log("[API] GET Diagnostics starting...");
     const { Daytona } = await import("@daytonaio/sdk");
+    console.log("[API] Daytona SDK imported successfully in GET");
     return NextResponse.json({
       status: "ok",
       hasDaytona: !!Daytona,
@@ -18,6 +20,7 @@ export async function GET() {
       }
     });
   } catch (err: any) {
+    console.error("[API] GET Diagnostics failed:", err.message);
     return NextResponse.json({ error: `GET Diagnostics failed: ${err.message}` }, { status: 500 });
   }
 }
@@ -35,6 +38,7 @@ export async function POST(req: NextRequest) {
     // 2. Dynamic Import Daytona (Fix for ERR_REQUIRE_ESM)
     console.log("[API] Importing Daytona SDK...");
     const { Daytona } = await import("@daytonaio/sdk");
+    console.log("[API] Daytona SDK imported successfully");
     
     // 3. Auth & Environment
     const supabaseAdmin = createAdminClient();
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest) {
           image: "node:20"
         });
         sandboxId = sandbox.id;
+        console.log("[API] Sandbox created:", sandboxId);
       }
     } catch (e: any) {
       console.error("[API] Daytona error:", e);
@@ -177,6 +182,8 @@ run();
     const host = req.headers.get("host") || "localhost:3000";
     let webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
     if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
+
+    console.log("[API] Webhook URL set to:", webhookUrl);
 
     const env = {
        GENERATION_PROMPT: prompt,
