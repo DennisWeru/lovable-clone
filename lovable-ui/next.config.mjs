@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@daytonaio/sdk'],
+  transpilePackages: ['@daytonaio/sdk', 'untildify'],
 };
 
 
-export default nextConfig;
+
+export default nextConfig;  
