@@ -98,15 +98,73 @@ export async function POST(req: NextRequest) {
       sandboxId = sandbox.id;
     }
 
-    // Upload the worker script (detaching the work)
-    const workerPath = "scripts/generation-worker.ts";
-    const workerContent = await fs.promises.readFile(path.join(process.cwd(), workerPath), "utf-8");
+    // 4. Prepare Worker Script (Bundled as constant to avoid fs issues on Vercel)
+    const workerContent = `
+import { execSync } from "child_process";
+console.log("[Worker] Bootstrapping...");
+try { execSync("npm install @google/generative-ai", { stdio: "inherit" }); } catch (e) { console.error(e); }
+
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import * as fs from "fs";
+import * as path from "path";
+
+const PROMPT = process.env.GENERATION_PROMPT || "";
+const MODEL = process.env.GENERATION_MODEL || "gemini-1.5-flash";
+const PROJECT_ID = process.env.PROJECT_ID || "";
+const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const SANDBOX_ID = process.env.SANDBOX_ID || "";
+
+async function sendUpdate(type, data) {
+  if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
+  try {
+    await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: PROJECT_ID, token: WEBHOOK_TOKEN, type, ...data })
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function run() {
+  await sendUpdate("progress", { message: "🚀 Worker started..." });
+  try {
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: MODEL });
+    const projectDir = path.join(process.cwd(), "website-project");
+    if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+
+    const result = await model.generateContent(PROMPT);
+    const text = result.response.text();
+    const cleanJson = text.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+    const parsed = JSON.parse(cleanJson);
+
+    if (parsed.files) {
+      for (const file of parsed.files) {
+        const filePath = path.join(projectDir, file.path);
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(filePath, file.content);
+        await sendUpdate("tool_use", { name: "WriteFile", input: { path: file.path } });
+      }
+    }
+    await sendUpdate("complete", { message: "Success!", metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } });
+  } catch (e) {
+    await sendUpdate("error", { message: e.message });
+  }
+}
+run();
+`;
+
+    // 5. Upload and Execute in Daytona
+    const workerPath = "/home/daytona/scripts/generation-worker.ts";
+    await sandbox.process.executeCommand("mkdir -p /home/daytona/scripts", "/home/daytona");
     
-    // We execute the worker using tsx, ensuring it handles everything
-    await sandbox.process.executeCommand(`mkdir -p scripts`, "/home/daytona");
     const base64Worker = Buffer.from(workerContent).toString("base64");
+    console.log("[API] Uploading worker to Daytona...");
     await sandbox.process.executeCommand(
-       `echo "${base64Worker}" | base64 -d > "/home/daytona/${workerPath}"`,
+       `echo "${base64Worker}" | base64 -d > ${workerPath}`,
        "/home/daytona"
     );
 
