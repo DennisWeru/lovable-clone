@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { generateWebsiteInDaytona } from "@/lib/generation/daytona";
 
 const GENERATION_COST = 100;
 
@@ -120,14 +119,6 @@ export async function POST(req: NextRequest) {
     // Start the async generation
     (async () => {
       try {
-        // Use the generate-in-daytona.ts script
-        const scriptPath = path.join(process.cwd(), "scripts", "generate-in-daytona.ts");
-        
-        // Pass sandboxId if available
-        const args = existingSandboxId 
-          ? [scriptPath, existingSandboxId, prompt, model]
-          : [scriptPath, prompt, model];
-
         // Fetch conversation history for follow-up prompts
         let conversationHistory = "";
         if (existingSandboxId && projectId) {
@@ -146,222 +137,79 @@ export async function POST(req: NextRequest) {
                 return `${role}: ${m.content ?? ""}`;
               })
               .join("\n");
-            console.log(`[API] Passing ${historyMsgs.length} history messages to script`);
           }
         }
 
-        const child = spawn("npx", ["tsx", ...args], {
-          env: {
-            ...process.env,
-            DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
-            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-            GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-            CONVERSATION_HISTORY: conversationHistory,
-          },
-        });
-        
-        let sandboxId = "";
-        let previewUrl = "";
-        let buffer = "";
         const collectedMessages: Array<{
           type: string;
           content?: string;
           metadata?: Record<string, any>;
         }> = [];
-        
-        // Capture stdout
-        child.stdout.on("data", async (data) => {
-          buffer += data.toString();
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ""; // Keep incomplete line in buffer
-          
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            
-            // Parse Claude messages
-            if (line.includes('__CLAUDE_MESSAGE__')) {
-              const jsonStart = line.indexOf('__CLAUDE_MESSAGE__') + '__CLAUDE_MESSAGE__'.length;
-              try {
-                const message = JSON.parse(line.substring(jsonStart).trim());
-                const payload = { type: "claude_message", content: message.content };
-                collectedMessages.push(payload);
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({ 
-                    type: "claude_message", 
-                    content: message.content 
-                  })}\n\n`)
-                );
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-            // Parse tool uses
-            else if (line.includes('__TOOL_USE__')) {
-              const jsonStart = line.indexOf('__TOOL_USE__') + '__TOOL_USE__'.length;
-              try {
-                const toolUse = JSON.parse(line.substring(jsonStart).trim());
-                collectedMessages.push({
-                  type: "tool_use",
-                  content: toolUse.name,
-                  metadata: { name: toolUse.name, input: toolUse.input },
-                });
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({ 
-                    type: "tool_use", 
-                    name: toolUse.name,
-                    input: toolUse.input 
-                  })}\n\n`)
-                );
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-            // Parse tool results
-            else if (line.includes('__TOOL_RESULT__')) {
-              // Skip tool results for now to reduce noise
-              continue;
-            }
-            // Parse Error messages
-            else if (line.includes('__ERROR__')) {
-              const jsonStart = line.indexOf('__ERROR__') + '__ERROR__'.length;
-              try {
-                const error = JSON.parse(line.substring(jsonStart).trim());
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({
-                    type: "error",
-                    code: error.code,
-                    message: error.message
-                  })}\n\n`)
-                );
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-            // Regular progress messages
-            else {
-              const output = line.trim();
-              
-              // Filter out internal logs
-              if (output && 
-                  !output.includes('[Claude]:') && 
-                  !output.includes('[Tool]:') &&
-                  !output.includes('__')) {
-                
-                // Send as progress
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({ 
-                    type: "progress", 
-                    message: output 
-                  })}\n\n`)
-                );
-                
-                // Extract sandbox ID
-                const sandboxMatch = output.match(/Sandbox created: ([a-f0-9-]+)/);
-                if (sandboxMatch) {
-                  sandboxId = sandboxMatch[1];
-                }
-                
-                // Extract preview URL
-                const previewMatch = output.match(/Preview URL: (https:\/\/[^\s]+)/);
-                if (previewMatch) {
-                  previewUrl = previewMatch[1];
-                }
-              }
-            }
+
+        const result = await generateWebsiteInDaytona({
+          sandboxId: existingSandboxId,
+          prompt,
+          model: model || "gemini-2.5-flash",
+          conversationHistory,
+          onProgress: async (message) => {
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "progress", message })}\n\n`));
+          },
+          onClaudeMessage: async (content) => {
+            collectedMessages.push({ type: "claude_message", content });
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "claude_message", content })}\n\n`));
+          },
+          onToolUse: async (name, input) => {
+            collectedMessages.push({ type: "tool_use", content: name, metadata: { name, input } });
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", name, input })}\n\n`));
+          },
+          onError: async (code, message) => {
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "error", code, message })}\n\n`));
           }
         });
-        
-        // Capture stderr
-        child.stderr.on("data", async (data) => {
-          const error = data.toString();
-          console.error("[Daytona Error]:", error);
-          
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ 
-              type: "error", 
-              message: error.trim() 
-            })}\n\n`)
-          );
-        });
-        
-        // Wait for process to complete
-        await new Promise((resolve, reject) => {
-          child.on("exit", (code) => {
-            if (code === 0) {
-              resolve(code);
-            } else {
-              reject(new Error(`Process exited with code ${code}`));
-            }
-          });
-          
-          child.on("error", reject);
-        });
-        
-        // Send completion with preview URL
-        if (previewUrl) {
-          // Update the database with completion using admin client
-          if (projectRecord) {
-            await supabaseAdmin
-              .from("projects")
-              .update({
-                sandbox_id: sandboxId,
-                preview_url: previewUrl,
-                status: "completed"
-              })
-              .eq("id", projectRecord.id);
 
-            // Persist conversation messages
-            const messagesToInsert = [
-              { project_id: projectRecord.id, type: "user", content: prompt },
-              ...collectedMessages.map((m) => ({
-                project_id: projectRecord.id,
-                type: m.type,
-                content: m.content ?? null,
-                metadata: m.metadata ?? null,
-              })),
-            ];
-            await supabaseAdmin.from("project_messages").insert(messagesToInsert);
-          }
+        // Update the database with completion
+        if (projectRecord) {
+          await supabaseAdmin
+            .from("projects")
+            .update({
+              sandbox_id: result.sandboxId,
+              preview_url: result.previewUrl,
+              status: "completed"
+            })
+            .eq("id", projectRecord.id);
 
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ 
-              type: "complete", 
-              sandboxId,
-              previewUrl 
-            })}\n\n`)
-          );
-          console.log(`[API] Generation complete. Preview URL: ${previewUrl}`);
-        } else {
-          throw new Error("Failed to get preview URL");
+          // Persist conversation messages
+          const messagesToInsert = [
+            { project_id: projectRecord.id, type: "user", content: prompt },
+            ...collectedMessages.map((m) => ({
+              project_id: projectRecord.id,
+              type: m.type,
+              content: m.content ?? null,
+              metadata: m.metadata ?? null,
+            })),
+          ];
+          await supabaseAdmin.from("project_messages").insert(messagesToInsert);
         }
-        
+
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+          type: "complete", 
+          sandboxId: result.sandboxId, 
+          previewUrl: result.previewUrl 
+        })}\n\n`));
+
         // Send done signal
         await writer.write(encoder.encode("data: [DONE]\n\n"));
       } catch (error: any) {
         console.error("[API] Error during generation:", error);
 
-        // Update project status to failed
         if (projectRecord) {
           await supabaseAdmin
             .from("projects")
             .update({ status: "failed" })
             .eq("id", projectRecord.id);
-
-          // Optionally refund credits here
-          /*
-          const { data: currentProfile } = await supabase.from("profiles").select("credits").eq("id", user.id).single();
-          if (currentProfile) {
-            await supabase.from("profiles").update({ credits: currentProfile.credits + GENERATION_COST }).eq("id", user.id);
-          }
-          */
         }
 
-        await writer.write(
-          encoder.encode(`data: ${JSON.stringify({ 
-            type: "error", 
-            message: error.message 
-          })}\n\n`)
-        );
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`));
         await writer.write(encoder.encode("data: [DONE]\n\n"));
       } finally {
         await writer.close();
