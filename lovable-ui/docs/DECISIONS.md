@@ -136,3 +136,29 @@ AI generation tasks frequently exceed Vercel's 10-60s serverless function timeou
 - **Stability**: Generation can now run for minutes (or hours) without being affected by Vercel's HTTP request limits.
 - **Reliability**: Users see real-time progress updates via Supabase even if the initial browser-server connection is severed.
 - **Scalability**: Decoupling the compute (Daytona) from the web server (Vercel) allows for much heavier generation workloads.
+
+## 2026-03-29 - Daytona SDK API Misuse: executeCommand Does Not Support Shell Features
+
+### Problem
+The generation worker was silently failing in production — `exitCode: -1` with empty stdout. The worker.log file was never created. Every attempt to fix the issue (wrapping in `sh -c`, using `nohup`, creating runner scripts) failed identically.
+
+### Root Cause
+`sandbox.process.executeCommand()` in the Daytona SDK (`@daytonaio/sdk ^0.21.5`) does **not** interpret commands through a shell. It executes them directly, which means:
+- Shell pipes (`|`) do not work
+- File redirections (`>`, `2>&1`) do not work  
+- Background operators (`&`, `nohup`) do not work
+- `echo "..." | base64 -d > file.mjs` — **the core of our file writing strategy** — was silently failing every time
+
+### Decision
+Replaced all `executeCommand`-based file I/O and process management with the proper Daytona SDK APIs:
+
+1. **File Writing**: `sandbox.fs.createFolder(path, mode)` and `sandbox.fs.uploadFile(Buffer, remotePath)` instead of `executeCommand('echo ... | base64 ...')`.
+2. **Background Execution**: `sandbox.process.createSession(id)` + `sandbox.process.executeSessionCommand(id, { command, runAsync: true })` instead of `executeCommand('nohup ... &')`.
+3. **Environment Variables**: Since `SessionExecuteRequest` has no `env` parameter, env vars are written to a shell script via `fs.uploadFile` and sourced inline: `source worker-env.sh && node worker.mjs`.
+4. **Log Reading**: `/api/daytona-logs` now uses `sandbox.fs.downloadFile(path)` and `sandbox.fs.listFiles(path)` instead of `executeCommand('cat ...')`.
+
+### Impact
+- The worker script is now **guaranteed** to be written to the container.
+- Background execution is managed by Daytona's native session system, not fragile nohup hacks.
+- Logs can be reliably retrieved via the filesystem API.
+

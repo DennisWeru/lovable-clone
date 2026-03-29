@@ -28,21 +28,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Sandbox not found" }, { status: 404 });
     }
 
-    // Access the logs or run a custom command
+    // Access the logs using the proper SDK filesystem API
     try {
-      const cmdToRun = req.nextUrl.searchParams.get("cmd") || "cat /home/daytona/worker.log";
-      const result = await sandbox.process.executeCommand(cmdToRun, "/home/daytona");
+      const filePath = req.nextUrl.searchParams.get("file") || "/home/daytona/worker.log";
+      const action = req.nextUrl.searchParams.get("action") || "read"; // "read" or "list"
+      
+      if (action === "list") {
+        const files = await sandbox.fs.listFiles(filePath);
+        return NextResponse.json({ 
+          success: true, 
+          sandboxId, 
+          path: filePath,
+          files: files 
+        });
+      }
+      
+      // Read a file
+      const fileBuffer = await sandbox.fs.downloadFile(filePath);
       return NextResponse.json({ 
         success: true, 
         sandboxId, 
-        cmd: cmdToRun,
-        result: result 
+        file: filePath,
+        content: fileBuffer.toString("utf-8")
       });
-    } catch (cmdErr: any) {
+    } catch (fsErr: any) {
        return NextResponse.json({ 
          success: false, 
-         error: "Command execution failed.",
-         details: cmdErr.message 
+         error: "File operation failed.",
+         details: fsErr.message 
        }, { status: 500 });
     }
     

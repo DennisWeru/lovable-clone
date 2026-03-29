@@ -200,23 +200,16 @@ async function run() {
 run();
 `;
 
-    // 7. Execute in Sandbox
+    // 7. Upload files and execute in Sandbox using proper SDK APIs
     const workerPath = "/home/daytona/scripts/generation-worker.mjs";
-    const runnerPath = "/home/daytona/scripts/runner.sh";
     
-    // Create scripts directory
-    await sandbox.process.executeCommand("mkdir -p /home/daytona/scripts", "/home/daytona");
+    // Create scripts directory using the filesystem API
+    console.log("[API] Creating scripts directory...");
+    await sandbox.fs.createFolder("/home/daytona/scripts", "755");
     
-    // Write the JS worker via explicit sh -c
-    const base64Worker = Buffer.from(workerContent).toString("base64");
-    await sandbox.process.executeCommand(`sh -c 'echo "${base64Worker}" | base64 -d > ${workerPath}'`, "/home/daytona");
-
-    // Write a robust wrapper script to protect the process from SIGHUP when SSH closes
-    const runnerContent = `#!/bin/bash
-nohup node ${workerPath} > /home/daytona/worker.log 2>&1 &
-`;
-    const base64Runner = Buffer.from(runnerContent).toString("base64");
-    await sandbox.process.executeCommand(`sh -c 'echo "${base64Runner}" | base64 -d > ${runnerPath} && chmod +x ${runnerPath}'`, "/home/daytona");
+    // Upload the worker file directly as a Buffer — no shell pipes needed
+    console.log("[API] Uploading worker script...");
+    await sandbox.fs.uploadFile(Buffer.from(workerContent), workerPath);
 
     // Force HTTPS on Vercel unless explicitly localhost
     let protocol = "https";
@@ -230,7 +223,8 @@ nohup node ${workerPath} > /home/daytona/worker.log 2>&1 &
 
     console.log("[API] Webhook URL set to:", webhookUrl);
 
-    const env = {
+    // Write env vars to a file since SessionExecuteRequest doesn't support env
+    const envFileContent = Object.entries({
        GENERATION_PROMPT: prompt,
        GENERATION_MODEL: model || "gemini-1.5-flash",
        PROJECT_ID: projectRecord.id,
@@ -238,13 +232,26 @@ nohup node ${workerPath} > /home/daytona/worker.log 2>&1 &
        WEBHOOK_URL: webhookUrl,
        GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
        SANDBOX_ID: sandboxId,
-    };
+    }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
+    
+    console.log("[API] Uploading .env file...");
+    await sandbox.fs.uploadFile(
+      Buffer.from(envFileContent),
+      "/home/daytona/scripts/worker-env.sh"
+    );
 
-    sandbox.process.executeCommand(
-       `sh -c "/home/daytona/scripts/runner.sh"`,
-       "/home/daytona",
-       env
-    ).catch(e => console.error("[API] Detach failed:", e));
+    // Use Daytona Sessions API for reliable background execution
+    const sessionId = `gen-${projectRecord.id.slice(0, 8)}`;
+    console.log("[API] Creating session:", sessionId);
+    await sandbox.process.createSession(sessionId);
+    
+    // Execute the worker asynchronously in the session (source env, then run node)
+    console.log("[API] Launching worker in session...");
+    const sessionResult = await sandbox.process.executeSessionCommand(sessionId, {
+      command: `source /home/daytona/scripts/worker-env.sh && node ${workerPath} > /home/daytona/worker.log 2>&1`,
+      runAsync: true,
+    });
+    console.log("[API] Session command launched, cmdId:", sessionResult.cmdId);
 
     console.log("[API] Hand-off success.");
     return NextResponse.json({
