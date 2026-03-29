@@ -385,7 +385,15 @@ await sandbox.fs.uploadFile(
 // Use Daytona Sessions API for reliable background execution
 const sessionId = `gen-${projectRecord.id.slice(0, 8)}`;
 console.log("[API] Creating session:", sessionId);
-await sandbox.process.createSession(sessionId);
+try {
+  await sandbox.process.createSession(sessionId);
+} catch (e: any) {
+  if (e.message && e.message.includes("conflict")) {
+    console.log("[API] Reusing existing session:", sessionId);
+  } else {
+    throw e;
+  }
+}
 
 // Execute the worker asynchronously in the session (source env, then run node)
 console.log("[API] Launching worker in session...");
