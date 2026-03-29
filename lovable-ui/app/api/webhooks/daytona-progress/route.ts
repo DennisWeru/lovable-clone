@@ -46,6 +46,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Database error" }, { status: 500 });
     }
 
+    // 3. Update project status and preview_url if needed
+    if (type === "complete") {
+      console.log("[Webhook] Completing project:", projectId);
+      await supabase
+        .from("projects")
+        .update({
+          status: "completed",
+          preview_url: metadata?.previewUrl || null,
+          sandbox_id: metadata?.sandboxId || null
+        })
+        .eq("id", projectId);
+    } else if (type === "error") {
+      console.error("[Webhook] Project error:", projectId, finalContent);
+      await supabase
+        .from("projects")
+        .update({ status: "error" })
+        .eq("id", projectId);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("[Webhook] Top-level error:", error);

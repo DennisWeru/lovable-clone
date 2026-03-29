@@ -225,6 +225,8 @@ async function runAgent() {
   const projectDir = path.join(process.cwd(), "website-project");
   if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
+  const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
+
   let attempts = 0;
   const maxAttempts = 3;
   let lastError = null;
@@ -283,10 +285,39 @@ async function runAgent() {
         }
       }
 
+      console.log("[Worker] Generation successful. Starting server...");
+      await sendUpdate("progress", { message: "[Agent] Starting preview server..." });
+
+      // Identify start command
+      let startCmd = "npx serve -s . -p 3000";
+      if (fs.existsSync(path.join(projectDir, "package.json"))) {
+        const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
+        if (pkg.scripts?.dev) startCmd = "npm run dev -- --port 3000";
+        else if (pkg.scripts?.start) startCmd = "npm start -- --port 3000";
+      }
+
+      // Start server in background
+      try {
+        const { spawn } = await import("child_process");
+        const serverProcess = spawn("sh", ["-c", "nohup " + startCmd + " > ../server.log 2>&1 &"], {
+          cwd: projectDir,
+          detached: true,
+          stdio: "ignore"
+        });
+        serverProcess.unref();
+        console.log("[Worker] Server launched with command:", startCmd);
+      } catch (e) {
+        console.error("[Worker] Failed to launch server process:", e.message);
+      }
+
+      // Wait for port 3000 to be open
+      await sendUpdate("progress", { message: "[Agent] Waiting for server to be ready..." });
+      await new Promise(r => setTimeout(r, 5000));
+
       console.log("[Worker] Sending completion update.");
       await sendUpdate("complete", { 
         message: "Project built and verified!", 
-        metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } 
+        metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL } 
       });
       return; 
     } catch (e) {
@@ -323,6 +354,16 @@ if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/
 
 console.log("[API] Webhook URL set to:", webhookUrl);
 
+// Get actual preview link from Daytona SDK
+console.log("[API] Getting preview link for port 3000...");
+let previewUrl = `https://${sandboxId}.daytona.app`; // Fallback
+try {
+  const preview = await sandbox.getPreviewLink(3000);
+  previewUrl = preview.url;
+} catch (e) {
+  console.warn("[API] Could not get preview link via SDK, using fallback");
+}
+
 // Write env vars to a file since SessionExecuteRequest doesn't support env
 const envFileContent = Object.entries({
   GENERATION_PROMPT: prompt,
@@ -332,6 +373,7 @@ const envFileContent = Object.entries({
   WEBHOOK_URL: webhookUrl,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
   SANDBOX_ID: sandboxId,
+  PREVIEW_URL: previewUrl,
 }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
 console.log("[API] Uploading .env file...");
