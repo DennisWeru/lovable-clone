@@ -131,22 +131,25 @@ export async function POST(req: NextRequest) {
     // 6. Worker Payload (Bundled)
     const workerContent = `
 import { execSync } from "child_process";
-console.log("[Worker] Bootstrapping...");
-
-// Create a minimal package.json if it doesn't exist to allow installing ESM modules
 import * as fs from "fs";
 import * as path from "path";
+
+console.log("[Worker] Bootstrapping...");
+
+// Create a minimal package.json for ESM support
 if (!fs.existsSync("package.json")) {
   fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
 }
 
+// Install dependencies BEFORE importing them
 try { 
+  console.log("[Worker] Installing @google/generative-ai...");
   execSync("npm install @google/generative-ai", { stdio: "inherit" }); 
+  console.log("[Worker] Install complete.");
 } catch (e) { 
-  console.error("Failed to install dependencies:", e); 
+  console.error("[Worker] Failed to install dependencies:", e); 
+  process.exit(1);
 }
-
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
 const MODEL = process.env.GENERATION_MODEL || "gemini-1.5-flash";
@@ -164,7 +167,7 @@ async function sendUpdate(type, data) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId: PROJECT_ID, token: WEBHOOK_TOKEN, type, ...data })
     });
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error("[Worker] sendUpdate failed:", e); }
 }
 
 async function run() {
@@ -172,18 +175,23 @@ async function run() {
   await new Promise(r => setTimeout(r, 2000));
   await sendUpdate("progress", { message: "🚀 Worker started..." });
   try {
+    // Dynamic import — only after npm install has completed
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: MODEL });
+    const aiModel = genAI.getGenerativeModel({ model: MODEL });
     const projectDir = path.join(process.cwd(), "website-project");
     if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
-    const result = await model.generateContent(PROMPT);
+    await sendUpdate("progress", { message: "🤖 Generating code with AI..." });
+    const result = await aiModel.generateContent(PROMPT);
     const text = result.response.text();
     const tripleBacktick = String.fromCharCode(96, 96, 96);
     const cleanJson = text.split(tripleBacktick + "json").pop().split(tripleBacktick).shift().trim();
     const parsed = JSON.parse(cleanJson);
 
     if (parsed.files) {
+      await sendUpdate("progress", { message: "📁 Writing " + parsed.files.length + " files..." });
       for (const file of parsed.files) {
         const filePath = path.join(projectDir, file.path);
         const dir = path.dirname(filePath);
@@ -194,6 +202,7 @@ async function run() {
     }
     await sendUpdate("complete", { message: "Success!", metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } });
   } catch (e) {
+    console.error("[Worker] Error:", e);
     await sendUpdate("error", { message: e.message });
   }
 }
