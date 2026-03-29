@@ -219,3 +219,20 @@ The worker log showed successful dependency installation (`[Worker] Install comp
 ### Key Learning
 The template literal escaping was the sneakiest bug. Four backslashes (`\\\\`) in the TypeScript source produce two backslashes in the JavaScript string, which produce one backslash + the next character in the .mjs file at runtime. The fix is two backslashes (`\\`) in TypeScript source → one backslash in the .mjs file → proper escape sequence at Node runtime.
 
+## 2026-03-29 - String.raw: Eliminating Template Literal Escape Hell
+
+### Problem
+The previous fix changed `\\\\n` to `\\n` inside the template literal, but `\\n` in a regular template literal is interpreted as an escape sequence producing an actual newline **byte** (0x0A). This meant the .mjs file contained a raw newline character inside a double-quoted string (`].join("` + newline + `")`), which is a JavaScript syntax error: `SyntaxError: Invalid or unexpected token`.
+
+The fundamental issue: generating JavaScript source code inside a template literal requires **two levels of escaping** — one for the template literal and one for the generated code. The correct escape for the template literal would be `\\n` (three characters: `\`, `\`, `n`), but this is extremely error-prone and hard to reason about.
+
+### Decision
+Used `String.raw` tagged template: `const workerContent = String.raw\`...\``. This disables escape sequence processing in the template literal while preserving physical line breaks. Now:
+- `\n` in source → literal `\n` (two chars) in the .mjs file → Node interprets as newline ✓
+- `\w`, `\s`, `\S` → literal regex character classes in the .mjs file ✓
+- `\{`, `\}` → literal regex escapes in the .mjs file ✓
+- Physical line breaks → actual newlines for file structure ✓
+
+### Impact
+Eliminates the entire class of multi-level escape bugs permanently. The worker script text in the TypeScript source now reads identically to how it appears in the generated .mjs file.
+

@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Worker Payload (Bundled)
-    const workerContent = `
+    const workerContent = String.raw`
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
