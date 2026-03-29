@@ -178,3 +178,44 @@ Node's ESM module resolver resolves packages **relative to the importing script'
 - `node_modules` is now guaranteed to be in the same directory as the worker script.
 - Node's ESM resolver finds the package on the first `import()` attempt.
 
+## 2026-03-29 - Worker Silent Stall After "Install complete." — Three Root Causes
+
+### Problem
+The worker log showed successful dependency installation (`[Worker] Install complete.`) and then went completely silent. No `[Worker] run() starting...`, no error messages, no crash output. This symptom persisted across multiple debugging conversations despite fixing earlier-stage issues (file upload, module resolution, etc.).
+
+### Root Causes
+
+1. **Unhandled Promise Rejection**: `run()` is an async function that returns a Promise. Line 263 called `run()` without `.catch()`. If anything inside the Promise chain rejected (e.g., a network error from `fetch`, a Gemini API failure), Node.js would emit an unhandled rejection and potentially terminate the process. Because stdout was redirected to a log file (`> worker.log 2>&1`), the output buffer might not flush before the process died — producing zero visible output after "Install complete."
+
+2. **Double-escaped strings in template literal**: The worker is defined as a template literal inside TypeScript. `\\\\n` in TypeScript source → `\\n` in the .mjs file → Node interprets this as the literal characters `\` + `n`, NOT a newline. This meant:
+   - `systemPrompt.join("\\\\n")` joined prompt lines with literal `\n` text, not newlines
+   - `"\\\\n\\\\nUser request: "` sent literal `\n\n` text to the AI, not paragraph breaks
+   - Regex patterns like `/^\\\\w*\\\\n/` and `/\\\\{[\\\\s\\\\S]*\\\\}/` matched wrong characters (literal backslash+w instead of word character class, etc.)
+   - The AI likely received a garbled prompt, returned unexpected output, the broken regex couldn't parse it, and the error cascaded to a silent crash
+
+3. **No diagnostic logging in the critical transition zone**: Between "Install complete" (line 148) and the `run()` call (line 263), there was zero logging for env var state, function entry, import results, or webhook responses. This made it impossible to diagnose which exact step failed.
+
+### Decision
+
+1. **Added `.catch()` to `run()`**: `run().catch(e => { console.error("[Worker] FATAL:", e); process.exit(1); })` ensures any unhandled rejection is logged before the process exits.
+
+2. **Fixed all string escaping**: Changed `\\\\n` → `\\n` throughout the template literal (for `.join()`, prompt concatenation, and `console.error` format strings). Fixed regex patterns: `\\\\w` → `\\w`, `\\\\{[\\\\s\\\\S]*\\\\}` → `\\{[\\s\\S]*\\}`.
+
+3. **Added comprehensive diagnostic logging**:
+   - ENV check dump after variable declarations (shows which vars loaded, key prefixes, URL previews)
+   - `sendUpdate` now logs skip reasons and HTTP response status codes
+   - Every JSON parse strategy logs success or failure
+   - File write operations log each file path
+   - `run()` entry and exit are logged
+
+4. **Safer error message extraction**: `e.message` → `String(e && e.message ? e.message : e)` to handle non-Error throwables.
+
+### Impact
+- Worker crashes will now always produce diagnostic output in the log file.
+- The AI system prompt is properly formatted with real newlines.
+- JSON extraction regexes now correctly match word characters, whitespace, and braces.
+- The fundamental pipeline (install → load env → call AI → parse JSON → write files → send webhook) should actually execute for the first time.
+
+### Key Learning
+The template literal escaping was the sneakiest bug. Four backslashes (`\\\\`) in the TypeScript source produce two backslashes in the JavaScript string, which produce one backslash + the next character in the .mjs file at runtime. The fix is two backslashes (`\\`) in TypeScript source → one backslash in the .mjs file → proper escape sequence at Node runtime.
+
