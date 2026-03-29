@@ -548,30 +548,61 @@ function GenerateContent() {
         </div>
         
         {/* Right side - Preview */}
-        <div className="w-[70%] bg-gray-950 flex items-center justify-center">
-          {!previewUrl && isGenerating && (
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mb-4">
-                <div className="w-12 h-12 bg-gray-700 rounded-xl animate-pulse"></div>
-              </div>
-              <p className="text-gray-400">Spinning up preview...</p>
-            </div>
-          )}
-          
+        <div className="w-[70%] bg-gray-950 flex flex-col relative">
+          {/* Preview Toolbar */}
           {previewUrl && (
-            <iframe
-              key={`preview-${regenCount}`}
-              src={previewUrl}
-              className="w-full h-full"
-              title="Website Preview"
-            />
-          )}
-          
-          {!previewUrl && !isGenerating && (
-            <div className="text-center">
-              <p className="text-gray-400">Preview will appear here</p>
+            <div className="h-12 bg-gray-900/50 border-b border-gray-800 flex items-center justify-between px-4 z-10 backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Live Preview</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-all flex items-center gap-1.5 text-xs border border-transparent hover:border-gray-700"
+                  title="Open in new tab"
+                >
+                  <span>Open in browser</span>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              </div>
             </div>
           )}
+
+          <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+            {!previewUrl && isGenerating && (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                  <div className="w-12 h-12 bg-gray-700 rounded-xl animate-pulse"></div>
+                </div>
+                <p className="text-gray-400">Spinning up preview environment...</p>
+              </div>
+            )}
+            
+            {previewUrl && (
+              <iframe
+                key={`preview-${regenCount}`}
+                src={previewUrl}
+                className="w-full h-full bg-white" 
+                title="Website Preview"
+              />
+            )}
+            
+            {!previewUrl && !isGenerating && (
+              <div className="text-center">
+                <div className="w-16 h-16 border-2 border-gray-800 border-dashed rounded-2xl flex items-center justify-center mb-4 mx-auto opacity-40">
+                  <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="text-gray-400">Preview will appear here</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </main>
