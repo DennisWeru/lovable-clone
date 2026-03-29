@@ -199,7 +199,12 @@ async function run() {
     console.log("[Worker] Import successful.");
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const aiModel = genAI.getGenerativeModel({ model: MODEL });
+    const aiModel = genAI.getGenerativeModel({ 
+      model: MODEL,
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    });
     const projectDir = path.join(process.cwd(), "website-project");
     if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
@@ -207,17 +212,16 @@ async function run() {
 
     const systemPrompt = [
       "You are an expert web developer. The user will describe a website or web application they want built.",
-      "You MUST respond with ONLY a JSON object (no explanation, no markdown outside the JSON).",
+      "You MUST respond with ONLY a valid JSON object. Do NOT include markdown code fences (like \`\`\`json), backticks, or raw text.",
       "The JSON object must have this exact structure:",
       '{ "files": [ { "path": "index.html", "content": "..." }, { "path": "style.css", "content": "..." } ] }',
       "Rules:",
       "- 'path' is relative (e.g. 'index.html', 'css/style.css', 'js/app.js')",
       "- 'content' is the full file content as a string",
+      "- Ensure all HTML/CSS/JS is inside the 'content' string. You MUST properly escape newlines (\\n) and quotes within these string values.",
       "- Always include at least an index.html file",
-      "- Use modern, beautiful, responsive HTML/CSS/JS",
-      "- Wrap the JSON in a json code fence using triple backticks",
-      "- Do NOT include any text before or after the code fence",
-    ].join("\n");
+      "- Use modern, beautiful, responsive HTML/CSS/JS"
+    ].join("\\n");
 
     console.log("[Worker] Sending prompt to AI, model:", MODEL, "prompt length:", PROMPT.length);
     const result = await aiModel.generateContent({
@@ -263,8 +267,8 @@ async function run() {
     }
 
     if (!parsed || !parsed.files) {
-      console.error("[Worker] Failed to parse AI response. Full text:\n", text);
-      throw new Error("AI did not return valid JSON with a files array. Response started with: " + text.substring(0, 200));
+      console.error("[Worker] Failed to parse AI response. Full text preview:\n", text.substring(0, 1000));
+      throw new Error("AI did not return valid JSON with a files array. Response started with: " + text.substring(0, 500));
     }
 
     console.log("[Worker] Parsed", parsed.files.length, "files from AI response.");
