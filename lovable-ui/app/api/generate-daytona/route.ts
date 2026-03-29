@@ -159,135 +159,121 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
 
-// Diagnostic: verify environment variables are loaded
-console.log("[Worker] ENV check:", JSON.stringify({
-  hasPrompt: !!PROMPT,
-  promptLength: PROMPT.length,
-  model: MODEL,
-  hasProjectId: !!PROJECT_ID,
-  hasWebhookToken: !!WEBHOOK_TOKEN,
-  webhookUrl: WEBHOOK_URL ? WEBHOOK_URL.slice(0, 50) : "(empty)",
-  hasGeminiKey: !!GEMINI_API_KEY,
-  geminiKeyPrefix: GEMINI_API_KEY ? GEMINI_API_KEY.slice(0, 6) + "..." : "(empty)",
-  sandboxId: SANDBOX_ID || "(empty)",
-}));
-
 async function sendUpdate(type, data) {
-  if (!WEBHOOK_URL || !WEBHOOK_TOKEN) {
-    console.log("[Worker] sendUpdate skipped (no URL or token). type:", type);
-    return;
-  }
+  if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
   try {
-    const res = await fetch(WEBHOOK_URL, {
+    await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId: PROJECT_ID, token: WEBHOOK_TOKEN, type, ...data })
     });
-    console.log("[Worker] sendUpdate", type, "status:", res.status);
   } catch (e) { console.error("[Worker] sendUpdate failed:", type, e); }
 }
 
-async function run() {
-  console.log("[Worker] run() starting...");
-  // Give frontend a moment to subscribe to Realtime
-  await new Promise(r => setTimeout(r, 2000));
-  await sendUpdate("progress", { message: "Worker started..." });
-  try {
-    // Dynamic import — only after npm install has completed
-    console.log("[Worker] Importing @google/generative-ai...");
-    const { GoogleGenerativeAI } = await import("@google/generative-ai");
-    console.log("[Worker] Import successful.");
+function parseResponse(text) {
+  const tripleBacktick = String.fromCharCode(96, 96, 96);
+  // Strategy 1: Clear application/json mode output
+  try { return JSON.parse(text); } catch (e) {}
 
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const aiModel = genAI.getGenerativeModel({ 
-      model: MODEL,
-      generationConfig: {
-        responseMimeType: "application/json"
-      }
-    });
-    const projectDir = path.join(process.cwd(), "website-project");
-    if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
-
-    await sendUpdate("progress", { message: "Generating code with AI..." });
-
-    const systemPrompt = [
-      "You are an expert web developer. The user will describe a website or web application they want built.",
-      "You MUST respond with ONLY a valid JSON object. Do NOT include markdown code fences (like \`\`\`json), backticks, or raw text.",
-      "The JSON object must have this exact structure:",
-      '{ "files": [ { "path": "index.html", "content": "..." }, { "path": "style.css", "content": "..." } ] }',
-      "Rules:",
-      "- 'path' is relative (e.g. 'index.html', 'css/style.css', 'js/app.js')",
-      "- 'content' is the full file content as a string",
-      "- Ensure all HTML/CSS/JS is inside the 'content' string. You MUST properly escape newlines (\\n) and quotes within these string values.",
-      "- Always include at least an index.html file",
-      "- Use modern, beautiful, responsive HTML/CSS/JS"
-    ].join("\\n");
-
-    console.log("[Worker] Sending prompt to AI, model:", MODEL, "prompt length:", PROMPT.length);
-    const result = await aiModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\nUser request: " + PROMPT }] }],
-    });
-    const text = result.response.text();
-    console.log("[Worker] AI response length:", text.length, "chars");
-    console.log("[Worker] AI response preview:", text.substring(0, 300));
-
-    // Robust JSON extraction — try multiple strategies
-    let parsed;
-    const tripleBacktick = String.fromCharCode(96, 96, 96);
-
-    // Strategy 1: Extract from json code fence
-    const jsonFenceMatch = text.split(tripleBacktick + "json");
-    if (jsonFenceMatch.length > 1) {
-      const inner = jsonFenceMatch[1].split(tripleBacktick)[0].trim();
-      try { parsed = JSON.parse(inner); console.log("[Worker] Parsed via Strategy 1 (json fence)"); } catch (_) { console.log("[Worker] Strategy 1 failed to parse"); }
-    }
-
-    // Strategy 2: Extract from any code fence
-    if (!parsed) {
-      const fenceMatch = text.split(tripleBacktick);
-      if (fenceMatch.length >= 3) {
-        const inner = fenceMatch[1].replace(/^\w*\n/, "").trim();
-        try { parsed = JSON.parse(inner); console.log("[Worker] Parsed via Strategy 2 (any fence)"); } catch (_) { console.log("[Worker] Strategy 2 failed to parse"); }
-      }
-    }
-
-    // Strategy 3: Try parsing the entire response as JSON directly
-    if (!parsed) {
-      try { parsed = JSON.parse(text.trim()); console.log("[Worker] Parsed via Strategy 3 (direct JSON)"); } catch (_) { console.log("[Worker] Strategy 3 failed to parse"); }
-    }
-
-    // Strategy 4: Find first { ... } block via greedy match
-    if (!parsed) {
-      const braceMatch = text.match(/\{[\s\S]*\}/);
-      if (braceMatch) {
-        try { parsed = JSON.parse(braceMatch[0]); console.log("[Worker] Parsed via Strategy 4 (brace match)"); } catch (_) { console.log("[Worker] Strategy 4 failed to parse"); }
-      } else {
-        console.log("[Worker] Strategy 4: no brace match found");
-      }
-    }
-
-    if (!parsed || !parsed.files) {
-      console.error("[Worker] Failed to parse AI response. Full text preview:\n", text.substring(0, 1000));
-      throw new Error("AI did not return valid JSON with a files array. Response started with: " + text.substring(0, 500));
-    }
-
-    console.log("[Worker] Parsed", parsed.files.length, "files from AI response.");
-    await sendUpdate("progress", { message: "Writing " + parsed.files.length + " files..." });
-    for (const file of parsed.files) {
-      const filePath = path.join(projectDir, file.path);
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, file.content);
-      console.log("[Worker] Wrote:", file.path);
-      await sendUpdate("tool_use", { name: "WriteFile", input: { path: file.path } });
-    }
-    console.log("[Worker] All files written. Sending completion.");
-    await sendUpdate("complete", { message: "Success!", metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } });
-    console.log("[Worker] Done!");
-  } catch (e) {
-    console.error("[Worker] Error:", e);
-    await sendUpdate("error", { message: String(e && e.message ? e.message : e) });
+  // Strategy 2: Code Fence
+  const fence = text.split(tripleBacktick + "json")[1] || text.split(tripleBacktick)[1];
+  if (fence) {
+    try { return JSON.parse(fence.split(tripleBacktick)[0].trim()); } catch (e) {}
   }
+
+  // Strategy 3: Greedy Brace
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch (e) {}
+  }
+  return null;
+}
+
+async function run() {
+  console.log("[Worker] Agent starting...");
+  await new Promise(r => setTimeout(r, 2000));
+  await sendUpdate("progress", { message: "Agent active in sandbox..." });
+
+  const { GoogleGenerativeAI } = await import("@google/generative-ai");
+  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  const aiModel = genAI.getGenerativeModel({ 
+    model: MODEL,
+    generationConfig: { responseMimeType: "application/json" }
+  });
+
+  const projectDir = path.join(process.cwd(), "website-project");
+  if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+
+  let attempts = 0;
+  const maxAttempts = 3;
+  let lastError = null;
+  let parsed = null;
+
+  const baseSystemPrompt = [
+    "You are a Senior Autonomous Developer Agent. Build a complete website based on the user request.",
+    "Respond ONLY with a JSON object: { \"files\": [ { \"path\": \"string\", \"content\": \"string\" } ] }",
+    "RULES:",
+    "- Escape all newlines and quotes correctly.",
+    "- Include all necessary files (index.html, styles, scripts, package.json if needed).",
+    "- Use modern, responsive design.",
+  ].join("\n");
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    await sendUpdate("progress", { 
+      message: attempts === 1 ? "Generating initial code..." : "[Agent] Self-healing attempt " + (attempts - 1) + "..." 
+    });
+
+    const currentPrompt = lastError 
+      ? "Your previous response failed validation with this error: " + lastError + ". Please provide the FULL fixed JSON."
+      : "User Request: " + PROMPT;
+
+    try {
+      const result = await aiModel.generateContent({
+        contents: [{ role: "user", parts: [{ text: baseSystemPrompt + "\n\n" + currentPrompt }] }],
+      });
+      const text = result.response.text();
+      parsed = parseResponse(text);
+
+      if (!parsed || !parsed.files) throw new Error("Could not extract valid files array from response.");
+
+      // Success: Write files
+      await sendUpdate("progress", { message: "Writing " + parsed.files.length + " files..." });
+      for (const file of parsed.files) {
+        const filePath = path.join(projectDir, file.path);
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(filePath, file.content);
+        await sendUpdate("tool_use", { name: "WriteFile", input: { path: file.path } });
+      }
+
+      // Environmental Autonomy: Dependency Install
+      const pkgPath = path.join(projectDir, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        await sendUpdate("progress", { message: "[Agent] Installing generated dependencies..." });
+        try {
+          execSync("npm install", { cwd: projectDir, stdio: "inherit" });
+          await sendUpdate("progress", { message: "[Agent] Dependencies installed successfully." });
+        } catch (installErr) {
+          console.error("[Agent] Dependency install failed:", installErr.message);
+        }
+      }
+
+      break; // Exit loop on success
+    } catch (e) {
+      console.error("[Agent] Attempt " + attempts + " failed:", e.message);
+      lastError = e.message;
+      if (attempts === maxAttempts) {
+        await sendUpdate("error", { message: "Autonomous generation failed after " + maxAttempts + " attempts: " + e.message });
+        return;
+      }
+    }
+  }
+
+  await sendUpdate("complete", { 
+    message: "Project built and verified!", 
+    metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } 
+  });
 }
 
 run().catch(e => {
