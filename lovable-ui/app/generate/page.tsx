@@ -378,6 +378,13 @@ function GenerateContent() {
           action: "Try hitting Retry to let it try again.",
           canRetry: true,
         };
+      case "QUOTA_EXCEEDED":
+        return {
+          title: "API Quota Exceeded",
+          description: "We've hit the Gemini API rate limits. The agent tried to retry automatically but finally gave up.",
+          action: "Please wait a few minutes before trying again to allow the quota to reset.",
+          canRetry: true,
+        };
       case "WORKER_STALLED":
         return {
           title: "Worker Silent Failure",

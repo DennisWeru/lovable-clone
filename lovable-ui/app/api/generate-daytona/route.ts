@@ -146,6 +146,24 @@ process.on("unhandledRejection", (err) => {
 
 console.log("[Worker] Agent process started.");
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function retryable(fn, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if ((e.status === 429 || (e.message && e.message.includes("429"))) && i < maxRetries - 1) {
+        console.warn("[Worker] Quota exceeded (429). Retrying in 45s (" + (i+1) + "/" + (maxRetries) + ")...");
+        await sendUpdate("progress", { message: "⚠️ Quota exceeded. Retrying in 45s..." });
+        await sleep(45000);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 async function main() {
   try {
     console.log("[Worker] Bootstrapping environment...");
@@ -169,6 +187,11 @@ async function main() {
     console.log("[Worker] Agent run complete.");
   } catch (err) {
     console.error("[Worker] Fatal error in main loop:", err);
+    await sendUpdate("error", { 
+      message: "Fatal: " + (err.message || "Unknown error"), 
+      code: err.status === 429 ? "QUOTA_EXCEEDED" : "WORKER_FATAL",
+      metadata: { stack: err.stack }
+    });
     process.exit(1);
   }
 }
@@ -312,7 +335,7 @@ async function runAgent() {
   const chat = aiModel.startChat();
   const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. When finished, summarize your work.";
   
-  let response = await chat.sendMessage(systemMessage + "\n\nUser Request: " + PROMPT);
+  let response = await retryable(() => chat.sendMessage(systemMessage + "\n\nUser Request: " + PROMPT));
   
   let turns = 0;
   const maxTurns = 15;
@@ -339,7 +362,7 @@ async function runAgent() {
       }
     }
 
-    response = await chat.sendMessage(toolResults);
+    response = await retryable(() => chat.sendMessage(toolResults));
   }
 
   const finalMessage = response.response.text();
