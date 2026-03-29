@@ -134,21 +134,46 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-console.log("[Worker] Bootstrapping...");
-
-// Create a minimal package.json for ESM support
-if (!fs.existsSync("package.json")) {
-  fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
-}
-
-// Install dependencies BEFORE importing them
-try { 
-  console.log("[Worker] Installing @google/generative-ai...");
-  execSync("npm install @google/generative-ai", { stdio: "inherit", cwd: "/home/daytona" }); 
-  console.log("[Worker] Install complete.");
-} catch (e) { 
-  console.error("[Worker] Failed to install dependencies:", e); 
+// Global error tracking
+process.on("uncaughtException", (err) => {
+  console.error("[Worker] FATAL Uncaught Exception:", err);
   process.exit(1);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[Worker] FATAL Unhandled Rejection:", err);
+  process.exit(1);
+});
+
+console.log("[Worker] Agent process started.");
+
+async function main() {
+  try {
+    console.log("[Worker] Bootstrapping environment...");
+    if (!fs.existsSync("package.json")) {
+      fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
+    }
+
+    // Install @google/generative-ai if not present
+    if (!fs.existsSync("./node_modules/@google/generative-ai")) {
+      console.log("[Worker] Installing @google/generative-ai (this may take a few seconds)...");
+      try {
+        const out = execSync("npm install @google/generative-ai", { encoding: "utf8" });
+        console.log("[Worker] npm install success:", out);
+      } catch (npmErr) {
+        console.error("[Worker] npm install failed:", npmErr.message);
+        // Continue anyway in case it's actually there
+      }
+    } else {
+      console.log("[Worker] @google/generative-ai already present.");
+    }
+
+    // Now run the actual logic
+    await runAgent();
+    console.log("[Worker] Agent run complete.");
+  } catch (err) {
+    console.error("[Worker] Fatal error in main loop:", err);
+    process.exit(1);
+  }
 }
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
@@ -167,21 +192,16 @@ async function sendUpdate(type, data) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId: PROJECT_ID, token: WEBHOOK_TOKEN, type, ...data })
     });
-  } catch (e) { console.error("[Worker] sendUpdate failed:", type, e); }
+  } catch (e) { console.error("[Worker] sendUpdate failed:", type, e.message); }
 }
 
 function parseResponse(text) {
   const tripleBacktick = String.fromCharCode(96, 96, 96);
-  // Strategy 1: Clear application/json mode output
   try { return JSON.parse(text); } catch (e) {}
-
-  // Strategy 2: Code Fence
   const fence = text.split(tripleBacktick + "json")[1] || text.split(tripleBacktick)[1];
   if (fence) {
     try { return JSON.parse(fence.split(tripleBacktick)[0].trim()); } catch (e) {}
   }
-
-  // Strategy 3: Greedy Brace
   const match = text.match(/\{[\s\S]*\}/);
   if (match) {
     try { return JSON.parse(match[0]); } catch (e) {}
@@ -189,11 +209,12 @@ function parseResponse(text) {
   return null;
 }
 
-async function run() {
-  console.log("[Worker] Agent starting...");
-  await new Promise(r => setTimeout(r, 2000));
+async function runAgent() {
+  console.log("[Worker] runAgent() starting...");
+  await new Promise(r => setTimeout(r, 2000)); // Delay for stream stability
   await sendUpdate("progress", { message: "Agent active in sandbox..." });
 
+  console.log("[Worker] Importing gen-ai SDK...");
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const aiModel = genAI.getGenerativeModel({ 
@@ -207,7 +228,6 @@ async function run() {
   let attempts = 0;
   const maxAttempts = 3;
   let lastError = null;
-  let parsed = null;
 
   const baseSystemPrompt = [
     "You are a Senior Autonomous Developer Agent. Build a complete website based on the user request.",
@@ -220,24 +240,27 @@ async function run() {
 
   while (attempts < maxAttempts) {
     attempts++;
+    console.log("[Worker] Generation attempt:", attempts);
     await sendUpdate("progress", { 
       message: attempts === 1 ? "Generating initial code..." : "[Agent] Self-healing attempt " + (attempts - 1) + "..." 
     });
 
     const currentPrompt = lastError 
-      ? "Your previous response failed validation with this error: " + lastError + ". Please provide the FULL fixed JSON."
+      ? "\nYour previous response failed validation with this error: " + lastError + ". Please provide the FULL fixed JSON."
       : "User Request: " + PROMPT;
 
     try {
+      console.log("[Worker] Calling AI SDK...");
       const result = await aiModel.generateContent({
         contents: [{ role: "user", parts: [{ text: baseSystemPrompt + "\n\n" + currentPrompt }] }],
       });
+      console.log("[Worker] AI response received.");
       const text = result.response.text();
-      parsed = parseResponse(text);
+      const parsed = parseResponse(text);
 
       if (!parsed || !parsed.files) throw new Error("Could not extract valid files array from response.");
 
-      // Success: Write files
+      console.log("[Worker] Parsed response with", parsed.files.length, "files.");
       await sendUpdate("progress", { message: "Writing " + parsed.files.length + " files..." });
       for (const file of parsed.files) {
         const filePath = path.join(projectDir, file.path);
@@ -247,21 +270,27 @@ async function run() {
         await sendUpdate("tool_use", { name: "WriteFile", input: { path: file.path } });
       }
 
-      // Environmental Autonomy: Dependency Install
       const pkgPath = path.join(projectDir, "package.json");
       if (fs.existsSync(pkgPath)) {
+        console.log("[Worker] package.json detected, running install...");
         await sendUpdate("progress", { message: "[Agent] Installing generated dependencies..." });
         try {
-          execSync("npm install", { cwd: projectDir, stdio: "inherit" });
+          execSync("npm install", { cwd: projectDir, encoding: "utf8" });
+          console.log("[Worker] npm install success in website-project.");
           await sendUpdate("progress", { message: "[Agent] Dependencies installed successfully." });
         } catch (installErr) {
           console.error("[Agent] Dependency install failed:", installErr.message);
         }
       }
 
-      break; // Exit loop on success
+      console.log("[Worker] Sending completion update.");
+      await sendUpdate("complete", { 
+        message: "Project built and verified!", 
+        metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } 
+      });
+      return; 
     } catch (e) {
-      console.error("[Agent] Attempt " + attempts + " failed:", e.message);
+      console.error("[Agent] Exception during generation:", e.message);
       lastError = e.message;
       if (attempts === maxAttempts) {
         await sendUpdate("error", { message: "Autonomous generation failed after " + maxAttempts + " attempts: " + e.message });
@@ -269,17 +298,9 @@ async function run() {
       }
     }
   }
-
-  await sendUpdate("complete", { 
-    message: "Project built and verified!", 
-    metadata: { sandboxId: SANDBOX_ID, previewUrl: "https://" + SANDBOX_ID + ".daytona.app" } 
-  });
 }
 
-run().catch(e => {
-  console.error("[Worker] FATAL unhandled rejection:", e);
-  process.exit(1);
-});
+main();
 `;
 
     // 7. Upload files and execute in Sandbox using proper SDK APIs
