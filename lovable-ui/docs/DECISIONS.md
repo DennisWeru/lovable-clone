@@ -234,5 +234,25 @@ Used `String.raw` tagged template: `const workerContent = String.raw\`...\``. Th
 - Physical line breaks → actual newlines for file structure ✓
 
 ### Impact
-Eliminates the entire class of multi-level escape bugs permanently. The worker script text in the TypeScript source now reads identically to how it appears in the generated .mjs file.
+Eliminates the entire class of multi-level escape bugs permanently. The worker script text in the TypeScript source now reads identically to how it appears in the generated .mjs file..
 
+## 2026-03-29 - Daytona Autonomous Agent: Multi-Turn Tool Integration
+
+### Problem
+The initial Daytona worker was a "static generator" that could only produce a list of files. It had no way to verify its work (visual testing), search for real documentation, or execute diagnostic commands during the generation process.
+
+### Decision
+Refactored the worker script into a **multi-turn autonomous agent** using Gemini's native function calling. The agent now operates in a loop, calling tools and analyzing their output before proceeding.
+
+### Implemented Tools:
+1. **Visual Testing (Playwright)**: `take_screenshot` tool. Installs `playwright-core` and chromium in the sandbox to capture the rendered site on port 3000.
+2. **Docs Search (Context7)**: `search_docs` tool. Integrates with `context7.com` API to fetch up-to-date documentation for libraries, reducing hallucinations.
+3. **Shell Access**: `run_command` tool. Allows the AI to run `npm install`, `npm test`, or `lint` to verify code correctness in real-time.
+4. **FS Management**: `list_files`, `read_file`, and `write_file` for precise project manipulation.
+
+### Rationale
+By moving to a tool-calling architecture, the agent can self-correct by "seeing" layout bugs via screenshots or "reading" error logs from shell commands. This significantly improves the reliability and quality of generated websites.
+
+### Prerequisites
+- `CONTEXT7_API_KEY` must be configured in the server environment.
+- The sandbox image must support basic browser dependencies (standard in most node:20 images).

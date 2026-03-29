@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Worker Payload (Bundled)
     const workerContent = String.raw`
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -153,18 +153,15 @@ async function main() {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
     }
 
-    // Install @google/generative-ai if not present
-    if (!fs.existsSync("./node_modules/@google/generative-ai")) {
-      console.log("[Worker] Installing @google/generative-ai (this may take a few seconds)...");
-      try {
-        const out = execSync("npm install @google/generative-ai", { encoding: "utf8" });
-        console.log("[Worker] npm install success:", out);
-      } catch (npmErr) {
-        console.error("[Worker] npm install failed:", npmErr.message);
-        // Continue anyway in case it's actually there
+    // Install core dependencies
+    const deps = ["@google/generative-ai", "playwright-core"];
+    for (const dep of deps) {
+      if (!fs.existsSync("./node_modules/" + dep)) {
+        console.log("[Worker] Installing " + dep + "...");
+        try {
+          execSync("npm install " + dep, { encoding: "utf8" });
+        } catch (e) { console.error("[Worker] Install failed for " + dep + ":", e.message); }
       }
-    } else {
-      console.log("[Worker] @google/generative-ai already present.");
     }
 
     // Now run the actual logic
@@ -182,7 +179,9 @@ const PROJECT_ID = process.env.PROJECT_ID || "";
 const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const CONTEXT7_API_KEY = process.env.CONTEXT7_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
+const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
 
 async function sendUpdate(type, data) {
   if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
@@ -195,179 +194,160 @@ async function sendUpdate(type, data) {
   } catch (e) { console.error("[Worker] sendUpdate failed:", type, e.message); }
 }
 
-function parseResponse(text) {
-  const tripleBacktick = String.fromCharCode(96, 96, 96);
-  try { return JSON.parse(text); } catch (e) {}
-  const fence = text.split(tripleBacktick + "json")[1] || text.split(tripleBacktick)[1];
-  if (fence) {
-    try { return JSON.parse(fence.split(tripleBacktick)[0].trim()); } catch (e) {}
+const projectDir = path.join(process.cwd(), "website-project");
+if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+
+// TOOL IMPLEMENTATIONS
+const tools = {
+  list_files: async ({ directory = "." }) => {
+    const target = path.join(projectDir, directory);
+    if (!fs.existsSync(target)) return { error: "Directory not found" };
+    const items = fs.readdirSync(target, { withFileTypes: true });
+    return { files: items.map(i => ({ name: i.name, type: i.isDirectory() ? "dir" : "file" })) };
+  },
+  read_file: async ({ path: filePath }) => {
+    const target = path.join(projectDir, filePath);
+    if (!fs.existsSync(target)) return { error: "File not found" };
+    return { content: fs.readFileSync(target, "utf8") };
+  },
+  write_file: async ({ path: filePath, content }) => {
+    const target = path.join(projectDir, filePath);
+    const dir = path.dirname(target);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(target, content);
+    await sendUpdate("tool_use", { name: "write_file", input: { path: filePath } });
+    return { success: true };
+  },
+  run_command: async ({ command }) => {
+    console.log("[Tool] Running command:", command);
+    await sendUpdate("tool_use", { name: "run_command", input: { command } });
+    try {
+      const output = execSync(command, { cwd: projectDir, encoding: "utf8", timeout: 60000 });
+      return { stdout: output };
+    } catch (e) {
+      return { error: e.message, stderr: e.stderr?.toString(), stdout: e.stdout?.toString() };
+    }
+  },
+  search_docs: async ({ vendor, project }) => {
+    console.log("[Tool] Searching context7 for:", vendor, project);
+    await sendUpdate("tool_use", { name: "search_docs", input: { vendor, project } });
+    if (!CONTEXT7_API_KEY) return { error: "CONTEXT7_API_KEY not configured" };
+    try {
+      const resp = await fetch("https://context7.com/api/v1/" + vendor + "/" + project, {
+        headers: { "Authorization": "Bearer " + CONTEXT7_API_KEY }
+      });
+      if (!resp.ok) return { error: "Context7 API error: " + resp.status };
+      return await resp.json();
+    } catch (e) { return { error: "Search failed: " + e.message }; }
+  },
+  take_screenshot: async () => {
+    console.log("[Tool] Taking screenshot...");
+    await sendUpdate("tool_use", { name: "take_screenshot", input: {} });
+    try {
+      // Ensure playwright browser is installed
+      const { chromium } = await import("playwright-core");
+      console.log("[Worker] Ensuring chromium is installed...");
+      execSync("npx playwright install chromium", { stdio: "inherit" });
+      
+      const browser = await chromium.launch();
+      const page = await browser.newPage();
+      await page.goto("http://localhost:3000", { waitUntil: "networkidle", timeout: 30000 });
+      const buffer = await page.screenshot();
+      await browser.close();
+      return { 
+        screenshot_base64: buffer.toString("base64"),
+        note: "Site is live at " + PREVIEW_URL
+      };
+    } catch (e) { 
+      console.error("[Tool] Screenshot failed:", e.message);
+      return { error: "Could not take screenshot. Ensure the server is running on port 3000 and dependencies are met. Details: " + e.message }; 
+    }
   }
-  const match = text.match(/\{[\s\S]*\}/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch (e) {}
+};
+
+const functionDeclarations = [
+  {
+    name: "list_files",
+    description: "List files in a directory of the project.",
+    parameters: { type: "OBJECT", properties: { directory: { type: "STRING" } } }
+  },
+  {
+    name: "read_file",
+    description: "Read the content of a file.",
+    parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+  },
+  {
+    name: "write_file",
+    description: "Write content to a file. Use this to create or update project files.",
+    parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, content: { type: "STRING" } }, required: ["path", "content"] }
+  },
+  {
+    name: "run_command",
+    description: "Execute a shell command (e.g., npm install, npm test, lint).",
+    parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
+  },
+  {
+    name: "search_docs",
+    description: "Get documentation for a library from Context7.",
+    parameters: { type: "OBJECT", properties: { vendor: { type: "STRING" }, project: { type: "STRING" } }, required: ["vendor", "project"] }
+  },
+  {
+    name: "take_screenshot",
+    description: "Take a screenshot of the website running at http://localhost:3000 to verify visual correctness.",
+    parameters: { type: "OBJECT", properties: {} }
   }
-  return null;
-}
+];
 
 async function runAgent() {
   console.log("[Worker] runAgent() starting...");
-  await new Promise(r => setTimeout(r, 2000)); // Delay for stream stability
-  await sendUpdate("progress", { message: "Agent active in sandbox..." });
+  await sendUpdate("progress", { message: "Agent active with tools..." });
 
-  console.log("[Worker] Importing gen-ai SDK...");
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const aiModel = genAI.getGenerativeModel({ 
     model: MODEL,
-    generationConfig: { responseMimeType: "application/json" }
+    tools: [{ functionDeclarations }]
   });
 
-  const projectDir = path.join(process.cwd(), "website-project");
-  if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+  const chat = aiModel.startChat();
+  const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. When finished, summarize your work.";
+  
+  let response = await chat.sendMessage(systemMessage + "\n\nUser Request: " + PROMPT);
+  
+  let turns = 0;
+  const maxTurns = 15;
 
-  const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
-
-  let attempts = 0;
-  const maxAttempts = 3;
-  let lastError = null;
-
-  const baseSystemPrompt = [
-    "You are a Senior Autonomous Developer Agent. Build a complete website based on the user request.",
-    "Respond ONLY with a JSON object: { \"files\": [ { \"path\": \"string\", \"content\": \"string\" } ] }",
-    "RULES:",
-    "- Escape all newlines and quotes correctly.",
-    "- Include all necessary files (index.html, styles, scripts, package.json if needed).",
-    "- Use modern, responsive design.",
-  ].join("\n");
-
-  while (attempts < maxAttempts) {
-    attempts++;
-    console.log("[Worker] Generation attempt:", attempts);
-    await sendUpdate("progress", { 
-      message: attempts === 1 ? "Generating initial code..." : "[Agent] Self-healing attempt " + (attempts - 1) + "..." 
-    });
-
-    let existingFilesContext = "";
-    try {
-      const recursiveRead = (dir, base = "") => {
-        let results = [];
-        const list = fs.readdirSync(dir);
-        for (const file of list) {
-          const filePath = path.join(dir, file);
-          const relPath = path.join(base, file);
-          const stat = fs.statSync(filePath);
-          if (stat.isDirectory()) {
-            if (file !== "node_modules" && file !== ".git") {
-              results = results.concat(recursiveRead(filePath, relPath));
-            }
-          } else {
-            const content = fs.readFileSync(filePath, "utf8");
-            results.push({ path: relPath, content: content.slice(0, 5000) }); // Cap per-file
-          }
-        }
-        return results;
-      };
-      
-      if (fs.existsSync(projectDir)) {
-        const existingFiles = recursiveRead(projectDir);
-        if (existingFiles.length > 0) {
-          existingFilesContext = "\n\nEXISTING PROJECT CODE:\n" + existingFiles.map(f => "--- FILE: " + f.path + " ---\n" + f.content).join("\n\n");
-        }
-      }
-    } catch (e) { console.error("[Worker] Failed to read existing files:", e.message); }
-
-    const currentPrompt = lastError 
-      ? "\nYour previous response failed validation with this error: " + lastError + ". Please provide the FULL fixed JSON."
-      : "User Request: " + PROMPT + existingFilesContext;
-
-    try {
-      console.log("[Worker] Calling AI SDK...");
-      const result = await aiModel.generateContent({
-        contents: [{ role: "user", parts: [{ text: baseSystemPrompt + "\n\n" + currentPrompt }] }],
-      });
-      console.log("[Worker] AI response received.");
-      const text = result.response.text();
-      const parsed = parseResponse(text);
-
-      if (!parsed || !parsed.files) throw new Error("Could not extract valid files array from response.");
-
-      console.log("[Worker] Parsed response with", parsed.files.length, "files.");
-      await sendUpdate("progress", { message: "Writing " + parsed.files.length + " files..." });
-      for (const file of parsed.files) {
-        const filePath = path.join(projectDir, file.path);
-        const dir = path.dirname(filePath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(filePath, file.content);
-        await sendUpdate("tool_use", { name: "WriteFile", input: { path: file.path } });
-      }
-
-      const pkgPath = path.join(projectDir, "package.json");
-      if (fs.existsSync(pkgPath)) {
-        console.log("[Worker] package.json detected, running install...");
-        await sendUpdate("progress", { message: "[Agent] Installing generated dependencies..." });
+  while (turns < maxTurns) {
+    const calls = response.response.functionCalls();
+    if (!calls || calls.length === 0) break;
+    
+    turns++;
+    console.log("[Worker] Turn " + turns + ", processing " + calls.length + " tool calls.");
+    
+    const toolResults = [];
+    for (const call of calls) {
+      const handler = tools[call.name];
+      if (handler) {
         try {
-          execSync("npm install", { cwd: projectDir, encoding: "utf8" });
-          console.log("[Worker] npm install success in website-project.");
-          await sendUpdate("progress", { message: "[Agent] Dependencies installed successfully." });
-        } catch (installErr) {
-          console.error("[Agent] Dependency install failed:", installErr.message);
+          const result = await handler(call.args);
+          toolResults.push({ functionResponse: { name: call.name, response: result } });
+        } catch (e) {
+          toolResults.push({ functionResponse: { name: call.name, response: { error: e.message } } });
         }
-      }
-
-      console.log("[Worker] Generation successful. Starting server...");
-      await sendUpdate("progress", { message: "[Agent] Starting preview server..." });
-
-      // Identify start command
-      let startCmd = "npx serve -s . -p 3000";
-      if (fs.existsSync(path.join(projectDir, "package.json"))) {
-        const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
-        if (pkg.scripts?.dev) startCmd = "npm run dev -- --port 3000";
-        else if (pkg.scripts?.start) startCmd = "npm start -- --port 3000";
-      }
-
-      // Kill anything on port 3000 first (using more portable lsof/kill)
-      try {
-        const { execSync } = await import("child_process");
-        // lsof/kill is available in most common node images
-        execSync("lsof -t -i:3000 | xargs kill -9 || true");
-        console.log("[Worker] Attempted to kill existing process on port 3000");
-      } catch (e) {
-        console.error("[Worker] Port killing failed (ignore if port was free):", e.message);
-      }
-
-      // Start server in background
-      try {
-        const { spawn } = await import("child_process");
-        const serverProcess = spawn("sh", ["-c", "nohup " + startCmd + " > ../server.log 2>&1 &"], {
-          cwd: projectDir,
-          detached: true,
-          stdio: "ignore"
-        });
-        serverProcess.unref();
-        console.log("[Worker] Server launched with command:", startCmd);
-      } catch (e) {
-        console.error("[Worker] Failed to launch server process:", e.message);
-      }
-
-      // Wait for port 3000 to be open
-      await sendUpdate("progress", { message: "[Agent] Waiting for server to be ready..." });
-      await new Promise(r => setTimeout(r, 5000));
-
-      console.log("[Worker] Sending completion update.");
-      await sendUpdate("complete", { 
-        message: "Project built and verified!", 
-        metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL } 
-      });
-      return; 
-    } catch (e) {
-      console.error("[Agent] Exception during generation:", e.message);
-      lastError = e.message;
-      if (attempts === maxAttempts) {
-        await sendUpdate("error", { message: "Autonomous generation failed after " + maxAttempts + " attempts: " + e.message });
-        return;
+      } else {
+        toolResults.push({ functionResponse: { name: call.name, response: { error: "Unknown tool" } } });
       }
     }
+
+    response = await chat.sendMessage(toolResults);
   }
+
+  const finalMessage = response.response.text();
+  console.log("[Worker] Agent finished.");
+  await sendUpdate("complete", { 
+    message: finalMessage || "Project build complete!", 
+    metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL } 
+  });
 }
 
 main();
@@ -411,6 +391,7 @@ const envFileContent = Object.entries({
   WEBHOOK_TOKEN: webhookToken,
   WEBHOOK_URL: webhookUrl,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || "",
   SANDBOX_ID: sandboxId,
   PREVIEW_URL: previewUrl,
 }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
