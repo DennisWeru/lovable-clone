@@ -296,6 +296,13 @@ async function runAgent() {
         else if (pkg.scripts?.start) startCmd = "npm start -- --port 3000";
       }
 
+      // Kill anything on port 3000 first
+      try {
+        const { execSync } = await import("child_process");
+        execSync("fuser -k 3000/tcp || true --port 3000"); // Standardize on port 3000
+        console.log("[Worker] Killed existing process on port 3000");
+      } catch (e) {}
+
       // Start server in background
       try {
         const { spawn } = await import("child_process");
