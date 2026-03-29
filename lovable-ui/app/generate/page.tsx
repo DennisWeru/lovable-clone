@@ -42,6 +42,7 @@ function GenerateContent() {
   const hasStartedRef = useRef(false);
   const loadingStuckTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showLogsAction, setShowLogsAction] = useState(false);
+  const [regenCount, setRegenCount] = useState(0);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -182,6 +183,7 @@ function GenerateContent() {
             } else if (message.type === "complete") {
               if (message.previewUrl) setPreviewUrl(message.previewUrl);
               if (message.sandboxId) setSandboxId(message.sandboxId);
+              setRegenCount((prev) => prev + 1); // Force iframe refresh
               setIsGenerating(false);
               channel.unsubscribe();
             } else {
@@ -558,6 +560,7 @@ function GenerateContent() {
           
           {previewUrl && (
             <iframe
+              key={`preview-${regenCount}`}
               src={previewUrl}
               className="w-full h-full"
               title="Website Preview"
