@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 
-export const maxDuration = 60; 
+export const maxDuration = 60;
 
 export async function GET() {
   try {
@@ -39,16 +39,16 @@ export async function POST(req: NextRequest) {
     console.log("[API] Importing Daytona SDK...");
     const { Daytona } = await import("@daytonaio/sdk");
     console.log("[API] Daytona SDK imported successfully");
-    
+
     // 3. Auth & Environment
     const supabase = createClient();
     const { data: authData, error: authError } = await supabase.auth.getUser();
-    
+
     if (authError || !authData?.user) {
       console.error("[API] Unauthorized generation attempt");
       return NextResponse.json({ error: "Unauthorized: Please log in to generate projects" }, { status: 401 });
     }
-    
+
     const userId = authData.user.id;
     const supabaseAdmin = createAdminClient();
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         .select("user_id")
         .eq("id", projectId)
         .single();
-        
+
       if (findError || !existing) throw new Error("Project not found");
       if (existing.user_id !== userId) throw new Error("Unauthorized: You do not own this project");
 
@@ -113,11 +113,11 @@ export async function POST(req: NextRequest) {
         const sandboxes = await daytona.list();
         sandbox = sandboxes.find((s: any) => s.id === sandboxId);
       }
-      
+
       if (!sandbox) {
         console.log("[API] Creating sandbox...");
-        sandbox = await daytona.create({ 
-          public: true, 
+        sandbox = await daytona.create({
+          public: true,
           image: "node:20"
         });
         sandboxId = sandbox.id;
@@ -195,8 +195,8 @@ async function run() {
       "- 'content' is the full file content as a string",
       "- Always include at least an index.html file",
       "- Use modern, beautiful, responsive HTML/CSS/JS",
-      "- Wrap the JSON in a ```json code fence",
-      "- Do NOT include any text before or after the code fence",
+      "- Wrap the JSON in a \`\`\`json code fence",
+    "- Do NOT include any text before or after the code fence",
     ].join("\\n");
 
     const result = await aiModel.generateContent({
@@ -210,32 +210,32 @@ async function run() {
     let parsed;
     const tripleBacktick = String.fromCharCode(96, 96, 96);
 
-    // Strategy 1: Extract from ```json ... ``` fence
+    // Strategy 1: Extract from \`\`\`json ... \`\`\` fence
     const jsonFenceMatch = text.split(tripleBacktick + "json");
     if (jsonFenceMatch.length > 1) {
       const inner = jsonFenceMatch[1].split(tripleBacktick)[0].trim();
-      try { parsed = JSON.parse(inner); } catch (_) {}
+      try { parsed = JSON.parse(inner); } catch (_) { }
     }
 
-    // Strategy 2: Extract from any ``` ... ``` fence
+    // Strategy 2: Extract from any \`\`\` ... \`\`\` fence
     if (!parsed) {
       const fenceMatch = text.split(tripleBacktick);
       if (fenceMatch.length >= 3) {
         const inner = fenceMatch[1].replace(/^\\w*\\n/, "").trim();
-        try { parsed = JSON.parse(inner); } catch (_) {}
+        try { parsed = JSON.parse(inner); } catch (_) { }
       }
     }
 
     // Strategy 3: Try parsing the entire response as JSON directly
     if (!parsed) {
-      try { parsed = JSON.parse(text.trim()); } catch (_) {}
+      try { parsed = JSON.parse(text.trim()); } catch (_) { }
     }
 
     // Strategy 4: Find first { ... } block via greedy match
     if (!parsed) {
       const braceMatch = text.match(/\\{[\\s\\S]*\\}/);
       if (braceMatch) {
-        try { parsed = JSON.parse(braceMatch[0]); } catch (_) {}
+        try { parsed = JSON.parse(braceMatch[0]); } catch (_) { }
       }
     }
 
@@ -278,50 +278,50 @@ run();
       protocol = "http";
     }
     
-    let webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
-    if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
+    let webhookUrl = `${ protocol }://${host}/api/webhooks/daytona-progress`;
+if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
 
-    console.log("[API] Webhook URL set to:", webhookUrl);
+console.log("[API] Webhook URL set to:", webhookUrl);
 
-    // Write env vars to a file since SessionExecuteRequest doesn't support env
-    const envFileContent = Object.entries({
-       GENERATION_PROMPT: prompt,
-       GENERATION_MODEL: model || "gemini-1.5-flash",
-       PROJECT_ID: projectRecord.id,
-       WEBHOOK_TOKEN: webhookToken,
-       WEBHOOK_URL: webhookUrl,
-       GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
-       SANDBOX_ID: sandboxId,
-    }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
-    
-    console.log("[API] Uploading .env file...");
-    await sandbox.fs.uploadFile(
-      Buffer.from(envFileContent),
-      "/home/daytona/worker-env.sh"
-    );
+// Write env vars to a file since SessionExecuteRequest doesn't support env
+const envFileContent = Object.entries({
+  GENERATION_PROMPT: prompt,
+  GENERATION_MODEL: model || "gemini-1.5-flash",
+  PROJECT_ID: projectRecord.id,
+  WEBHOOK_TOKEN: webhookToken,
+  WEBHOOK_URL: webhookUrl,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  SANDBOX_ID: sandboxId,
+}).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
-    // Use Daytona Sessions API for reliable background execution
-    const sessionId = `gen-${projectRecord.id.slice(0, 8)}`;
-    console.log("[API] Creating session:", sessionId);
-    await sandbox.process.createSession(sessionId);
-    
-    // Execute the worker asynchronously in the session (source env, then run node)
-    console.log("[API] Launching worker in session...");
-    const sessionResult = await sandbox.process.executeSessionCommand(sessionId, {
-      command: `source /home/daytona/worker-env.sh && cd /home/daytona && node ${workerPath} > /home/daytona/worker.log 2>&1`,
-      runAsync: true,
-    });
-    console.log("[API] Session command launched, cmdId:", sessionResult.cmdId);
+console.log("[API] Uploading .env file...");
+await sandbox.fs.uploadFile(
+  Buffer.from(envFileContent),
+  "/home/daytona/worker-env.sh"
+);
 
-    console.log("[API] Hand-off success.");
-    return NextResponse.json({
-       success: true,
-       projectId: projectRecord.id,
-       sandboxId: sandboxId
-    });
+// Use Daytona Sessions API for reliable background execution
+const sessionId = `gen-${projectRecord.id.slice(0, 8)}`;
+console.log("[API] Creating session:", sessionId);
+await sandbox.process.createSession(sessionId);
+
+// Execute the worker asynchronously in the session (source env, then run node)
+console.log("[API] Launching worker in session...");
+const sessionResult = await sandbox.process.executeSessionCommand(sessionId, {
+  command: `source /home/daytona/worker-env.sh && cd /home/daytona && node ${workerPath} > /home/daytona/worker.log 2>&1`,
+  runAsync: true,
+});
+console.log("[API] Session command launched, cmdId:", sessionResult.cmdId);
+
+console.log("[API] Hand-off success.");
+return NextResponse.json({
+  success: true,
+  projectId: projectRecord.id,
+  sandboxId: sandboxId
+});
 
   } catch (err: any) {
-    console.error("[API] Fatal error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  console.error("[API] Fatal error:", err.message);
+  return NextResponse.json({ error: err.message }, { status: 500 });
+}
 }
