@@ -165,6 +165,7 @@ function GenerateContent() {
             const message: Message = {
               type: newMessage.type,
               content: newMessage.content ?? undefined,
+              message: newMessage.content ?? undefined,
               name: newMessage.metadata?.name,
               input: newMessage.metadata?.input,
               previewUrl: newMessage.metadata?.previewUrl,
@@ -467,7 +468,7 @@ function GenerateContent() {
                 
                 {message.type === "progress" && (
                   <div className="text-gray-500 text-sm font-mono break-all">
-                    {message.message}
+                    {message.content || message.message}
                   </div>
                 )}
               </div>
