@@ -40,6 +40,8 @@ function GenerateContent() {
   const [lastPrompt, setLastPrompt] = useState<string>(prompt);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasStartedRef = useRef(false);
+  const loadingStuckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showLogsAction, setShowLogsAction] = useState(false);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -106,7 +108,19 @@ function GenerateContent() {
       setLastPrompt(currentPrompt);
       setError(null);
       setIsGenerating(true);
+      setShowLogsAction(false);
       
+      // Start stall detection timer (45 seconds)
+      if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
+      loadingStuckTimerRef.current = setTimeout(() => {
+        setIsGenerating(false);
+        setError({
+          message: "The generation worker seems to be stuck or crashed before it could communicate back.",
+          code: "WORKER_STALLED"
+        });
+        setShowLogsAction(true);
+      }, 45000);
+
       console.log("[Generate] Calling API /api/generate-daytona...");
       const response = await fetch("/api/generate-daytona", {
         method: "POST",
@@ -157,6 +171,10 @@ function GenerateContent() {
               sandboxId: newMessage.metadata?.sandboxId,
             };
 
+            
+            // Clear stall timer if we get any message
+            if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
+
             if (message.type === "error") {
               setError({ message: message.content || "An error occurred" });
               setIsGenerating(false);
@@ -172,15 +190,36 @@ function GenerateContent() {
         )
         .subscribe((status) => {
           console.log(`[Generate] Realtime Subscription Status for ${currentProjectId}:`, status);
-          if (status === "CHANNEL_ERROR") {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
             setError({ message: "Realtime connection failed. Updates may not appear automatically." });
+            setIsGenerating(false);
           }
         });
 
     } catch (err: any) {
+      if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
       console.error("Error generating website:", err);
       setError({ message: err.message || "An error occurred" });
       setIsGenerating(false);
+    }
+  };
+
+  const fetchWorkerLogs = async () => {
+    if (!sandboxId) return;
+    try {
+      const res = await fetch(`/api/daytona-logs?sandboxId=${sandboxId}`);
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => [...prev, {
+          type: "error",
+          content: "WORKER LOGS:\n" + data.logs
+        }]);
+      } else {
+        alert("Failed to fetch logs: " + data.error);
+      }
+    } catch (e: any) {
+      alert("Error fetching logs: " + e.message);
     }
   };
 
@@ -299,6 +338,13 @@ function GenerateContent() {
           title: "AI Response Glitch",
           description: "The AI gave us a response we didn't quite understand. It happens sometimes with complex requests!",
           action: "Try hitting Retry to let it try again.",
+          canRetry: true,
+        };
+      case "WORKER_STALLED":
+        return {
+          title: "Worker Silent Failure",
+          description: "The background process did not report any progress. It may have crashed silently.",
+          action: "Fetch the logs or Retry.",
           canRetry: true,
         };
       case "SERVER_START_TIMEOUT":
@@ -457,6 +503,14 @@ function GenerateContent() {
                       className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/40 text-blue-200 text-xs rounded-md border border-blue-500/30 transition-colors"
                     >
                       ⚡ Restart Server
+                    </button>
+                  )}
+                  {showLogsAction && (
+                    <button
+                      onClick={fetchWorkerLogs}
+                      className="px-3 py-1.5 bg-yellow-600/30 hover:bg-yellow-600/40 text-yellow-200 text-xs rounded-md border border-yellow-500/30 transition-colors"
+                    >
+                      📄 Fetch Worker Logs
                     </button>
                   )}
                 </div>

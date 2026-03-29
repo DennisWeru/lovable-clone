@@ -132,11 +132,21 @@ export async function POST(req: NextRequest) {
     const workerContent = `
 import { execSync } from "child_process";
 console.log("[Worker] Bootstrapping...");
-try { execSync("npm install @google/generative-ai", { stdio: "inherit" }); } catch (e) { console.error(e); }
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// Create a minimal package.json if it doesn't exist to allow installing ESM modules
 import * as fs from "fs";
 import * as path from "path";
+if (!fs.existsSync("package.json")) {
+  fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
+}
+
+try { 
+  execSync("npm install @google/generative-ai", { stdio: "inherit" }); 
+} catch (e) { 
+  console.error("Failed to install dependencies:", e); 
+}
+
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
 const MODEL = process.env.GENERATION_MODEL || "gemini-1.5-flash";
@@ -191,13 +201,18 @@ run();
 `;
 
     // 7. Execute in Sandbox
-    const workerPath = "/home/daytona/scripts/generation-worker.ts";
+    const workerPath = "/home/daytona/scripts/generation-worker.mjs";
     await sandbox.process.executeCommand("mkdir -p /home/daytona/scripts", "/home/daytona");
     const base64Worker = Buffer.from(workerContent).toString("base64");
     await sandbox.process.executeCommand(`echo "${base64Worker}" | base64 -d > ${workerPath}`, "/home/daytona");
 
-    const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-    const host = req.headers.get("host") || "localhost:3000";
+    // Force HTTPS on Vercel unless explicitly localhost
+    let protocol = "https";
+    const host = req.headers.get("host") || "lovable-clone.vercel.app";
+    if (host.includes("localhost") || host.includes("127.0.0.1")) {
+      protocol = "http";
+    }
+    
     let webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
     if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
 
@@ -214,7 +229,7 @@ run();
     };
 
     sandbox.process.executeCommand(
-       `nohup npx -y tsx ${workerPath} > /home/daytona/worker.log 2>&1 &`,
+       `nohup node ${workerPath} > /home/daytona/worker.log 2>&1 &`,
        "/home/daytona",
        env
     ).catch(e => console.error("[API] Detach failed:", e));
