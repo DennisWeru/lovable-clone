@@ -28,19 +28,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Sandbox not found" }, { status: 404 });
     }
 
-    // Access the logs
+    // Access the logs or run a custom command
     try {
-      // Just dumping the log file via standard cat since it's a Linux container
-      const result = await sandbox.process.executeCommand("cat /home/daytona/worker.log", "/home/daytona");
+      const cmdToRun = req.nextUrl.searchParams.get("cmd") || "cat /home/daytona/worker.log";
+      const result = await sandbox.process.executeCommand(cmdToRun, "/home/daytona");
       return NextResponse.json({ 
         success: true, 
         sandboxId, 
-        logs: result || "Empty log file or no output yet." 
+        cmd: cmdToRun,
+        result: result 
       });
     } catch (cmdErr: any) {
        return NextResponse.json({ 
          success: false, 
-         error: "Failed to read logs or worker.log does not exist yet.",
+         error: "Command execution failed.",
          details: cmdErr.message 
        }, { status: 500 });
     }

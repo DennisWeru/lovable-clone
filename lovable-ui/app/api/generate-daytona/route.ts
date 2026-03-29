@@ -202,9 +202,21 @@ run();
 
     // 7. Execute in Sandbox
     const workerPath = "/home/daytona/scripts/generation-worker.mjs";
+    const runnerPath = "/home/daytona/scripts/runner.sh";
+    
+    // Create scripts directory
     await sandbox.process.executeCommand("mkdir -p /home/daytona/scripts", "/home/daytona");
+    
+    // Write the JS worker via explicit sh -c
     const base64Worker = Buffer.from(workerContent).toString("base64");
-    await sandbox.process.executeCommand(`echo "${base64Worker}" | base64 -d > ${workerPath}`, "/home/daytona");
+    await sandbox.process.executeCommand(`sh -c 'echo "${base64Worker}" | base64 -d > ${workerPath}'`, "/home/daytona");
+
+    // Write a robust wrapper script to protect the process from SIGHUP when SSH closes
+    const runnerContent = `#!/bin/bash
+nohup node ${workerPath} > /home/daytona/worker.log 2>&1 &
+`;
+    const base64Runner = Buffer.from(runnerContent).toString("base64");
+    await sandbox.process.executeCommand(`sh -c 'echo "${base64Runner}" | base64 -d > ${runnerPath} && chmod +x ${runnerPath}'`, "/home/daytona");
 
     // Force HTTPS on Vercel unless explicitly localhost
     let protocol = "https";
@@ -229,7 +241,7 @@ run();
     };
 
     sandbox.process.executeCommand(
-       `nohup node ${workerPath} > /home/daytona/worker.log 2>&1 &`,
+       `sh -c "/home/daytona/scripts/runner.sh"`,
        "/home/daytona",
        env
     ).catch(e => console.error("[API] Detach failed:", e));
