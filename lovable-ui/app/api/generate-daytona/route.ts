@@ -184,11 +184,65 @@ async function run() {
     if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
     await sendUpdate("progress", { message: "🤖 Generating code with AI..." });
-    const result = await aiModel.generateContent(PROMPT);
+
+    const systemPrompt = [
+      "You are an expert web developer. The user will describe a website or web application they want built.",
+      "You MUST respond with ONLY a JSON object (no explanation, no markdown outside the JSON).",
+      "The JSON object must have this exact structure:",
+      '{ "files": [ { "path": "index.html", "content": "..." }, { "path": "style.css", "content": "..." } ] }',
+      "Rules:",
+      "- 'path' is relative (e.g. 'index.html', 'css/style.css', 'js/app.js')",
+      "- 'content' is the full file content as a string",
+      "- Always include at least an index.html file",
+      "- Use modern, beautiful, responsive HTML/CSS/JS",
+      "- Wrap the JSON in a ```json code fence",
+      "- Do NOT include any text before or after the code fence",
+    ].join("\\n");
+
+    const result = await aiModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: systemPrompt + "\\n\\nUser request: " + PROMPT }] }],
+    });
     const text = result.response.text();
+    console.log("[Worker] AI response length:", text.length, "chars");
+    console.log("[Worker] AI response preview:", text.substring(0, 200));
+
+    // Robust JSON extraction — try multiple strategies
+    let parsed;
     const tripleBacktick = String.fromCharCode(96, 96, 96);
-    const cleanJson = text.split(tripleBacktick + "json").pop().split(tripleBacktick).shift().trim();
-    const parsed = JSON.parse(cleanJson);
+
+    // Strategy 1: Extract from ```json ... ``` fence
+    const jsonFenceMatch = text.split(tripleBacktick + "json");
+    if (jsonFenceMatch.length > 1) {
+      const inner = jsonFenceMatch[1].split(tripleBacktick)[0].trim();
+      try { parsed = JSON.parse(inner); } catch (_) {}
+    }
+
+    // Strategy 2: Extract from any ``` ... ``` fence
+    if (!parsed) {
+      const fenceMatch = text.split(tripleBacktick);
+      if (fenceMatch.length >= 3) {
+        const inner = fenceMatch[1].replace(/^\\w*\\n/, "").trim();
+        try { parsed = JSON.parse(inner); } catch (_) {}
+      }
+    }
+
+    // Strategy 3: Try parsing the entire response as JSON directly
+    if (!parsed) {
+      try { parsed = JSON.parse(text.trim()); } catch (_) {}
+    }
+
+    // Strategy 4: Find first { ... } block via greedy match
+    if (!parsed) {
+      const braceMatch = text.match(/\\{[\\s\\S]*\\}/);
+      if (braceMatch) {
+        try { parsed = JSON.parse(braceMatch[0]); } catch (_) {}
+      }
+    }
+
+    if (!parsed || !parsed.files) {
+      console.error("[Worker] Failed to parse AI response. Full text:\\n", text);
+      throw new Error("AI did not return valid JSON with a 'files' array. Response started with: " + text.substring(0, 100));
+    }
 
     if (parsed.files) {
       await sendUpdate("progress", { message: "📁 Writing " + parsed.files.length + " files..." });
