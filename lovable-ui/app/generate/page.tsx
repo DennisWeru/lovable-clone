@@ -110,16 +110,16 @@ function GenerateContent() {
       setIsGenerating(true);
       setShowLogsAction(false);
       
-      // Start stall detection timer (45 seconds)
+      // Start stall detection timer (3 minutes) - generation can take a while with retries
       if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
       loadingStuckTimerRef.current = setTimeout(() => {
         setIsGenerating(false);
         setError({
-          message: "The generation worker seems to be stuck or crashed before it could communicate back.",
+          message: "The generation worker did not report completion in time. This might be due to a slow AI response or large dependency install.",
           code: "WORKER_STALLED"
         });
         setShowLogsAction(true);
-      }, 45000);
+      }, 180000);
 
       console.log("[Generate] Calling API /api/generate-daytona...");
       const response = await fetch("/api/generate-daytona", {

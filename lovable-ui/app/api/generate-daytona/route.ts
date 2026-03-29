@@ -247,9 +247,38 @@ async function runAgent() {
       message: attempts === 1 ? "Generating initial code..." : "[Agent] Self-healing attempt " + (attempts - 1) + "..." 
     });
 
+    let existingFilesContext = "";
+    try {
+      const recursiveRead = (dir, base = "") => {
+        let results = [];
+        const list = fs.readdirSync(dir);
+        for (const file of list) {
+          const filePath = path.join(dir, file);
+          const relPath = path.join(base, file);
+          const stat = fs.statSync(filePath);
+          if (stat.isDirectory()) {
+            if (file !== "node_modules" && file !== ".git") {
+              results = results.concat(recursiveRead(filePath, relPath));
+            }
+          } else {
+            const content = fs.readFileSync(filePath, "utf8");
+            results.push({ path: relPath, content: content.slice(0, 5000) }); // Cap per-file
+          }
+        }
+        return results;
+      };
+      
+      if (fs.existsSync(projectDir)) {
+        const existingFiles = recursiveRead(projectDir);
+        if (existingFiles.length > 0) {
+          existingFilesContext = "\n\nEXISTING PROJECT CODE:\n" + existingFiles.map(f => "--- FILE: " + f.path + " ---\n" + f.content).join("\n\n");
+        }
+      }
+    } catch (e) { console.error("[Worker] Failed to read existing files:", e.message); }
+
     const currentPrompt = lastError 
       ? "\nYour previous response failed validation with this error: " + lastError + ". Please provide the FULL fixed JSON."
-      : "User Request: " + PROMPT;
+      : "User Request: " + PROMPT + existingFilesContext;
 
     try {
       console.log("[Worker] Calling AI SDK...");
@@ -296,12 +325,15 @@ async function runAgent() {
         else if (pkg.scripts?.start) startCmd = "npm start -- --port 3000";
       }
 
-      // Kill anything on port 3000 first
+      // Kill anything on port 3000 first (using more portable lsof/kill)
       try {
         const { execSync } = await import("child_process");
-        execSync("fuser -k 3000/tcp || true --port 3000"); // Standardize on port 3000
-        console.log("[Worker] Killed existing process on port 3000");
-      } catch (e) {}
+        // lsof/kill is available in most common node images
+        execSync("lsof -t -i:3000 | xargs kill -9 || true");
+        console.log("[Worker] Attempted to kill existing process on port 3000");
+      } catch (e) {
+        console.error("[Worker] Port killing failed (ignore if port was free):", e.message);
+      }
 
       // Start server in background
       try {
