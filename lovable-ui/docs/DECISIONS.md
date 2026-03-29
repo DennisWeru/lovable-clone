@@ -162,3 +162,19 @@ Replaced all `executeCommand`-based file I/O and process management with the pro
 - Background execution is managed by Daytona's native session system, not fragile nohup hacks.
 - Logs can be reliably retrieved via the filesystem API.
 
+## 2026-03-29 - ERR_MODULE_NOT_FOUND: npm install vs Node ESM Resolution Mismatch
+
+### Problem
+The generation worker installed `@google/generative-ai` successfully but Node immediately threw `ERR_MODULE_NOT_FOUND` when the dynamic `import()` ran. The install succeeded (exit code 0, `added 1 package`) but the module was invisible to the script.
+
+### Root Cause
+Node's ESM module resolver resolves packages **relative to the importing script's directory**, not `process.cwd()`. The worker script lives at `/home/daytona/generation-worker.mjs`, so Node looks for `node_modules` at `/home/daytona/node_modules`. However, `execSync("npm install ...")` installs into `process.cwd()`, which is wherever the Daytona session's default working directory happens to be — not necessarily `/home/daytona/`. This caused the `node_modules` to land in a directory Node never searches.
+
+### Decision
+1. **Explicit `cwd` in `execSync`**: Changed the worker's install command to `execSync("npm install @google/generative-ai", { stdio: "inherit", cwd: "/home/daytona" })` so `node_modules` is always created beside the script.
+2. **Explicit `cd` in session command**: Added `cd /home/daytona &&` before `node generation-worker.mjs` in the `executeSessionCommand` call, ensuring `process.cwd()` also matches the script location.
+
+### Impact
+- `node_modules` is now guaranteed to be in the same directory as the worker script.
+- Node's ESM resolver finds the package on the first `import()` attempt.
+

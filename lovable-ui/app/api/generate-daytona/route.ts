@@ -144,7 +144,7 @@ if (!fs.existsSync("package.json")) {
 // Install dependencies BEFORE importing them
 try { 
   console.log("[Worker] Installing @google/generative-ai...");
-  execSync("npm install @google/generative-ai", { stdio: "inherit" }); 
+  execSync("npm install @google/generative-ai", { stdio: "inherit", cwd: "/home/daytona" }); 
   console.log("[Worker] Install complete.");
 } catch (e) { 
   console.error("[Worker] Failed to install dependencies:", e); 
@@ -254,7 +254,7 @@ run();
     // Execute the worker asynchronously in the session (source env, then run node)
     console.log("[API] Launching worker in session...");
     const sessionResult = await sandbox.process.executeSessionCommand(sessionId, {
-      command: `source /home/daytona/worker-env.sh && node ${workerPath} > /home/daytona/worker.log 2>&1`,
+      command: `source /home/daytona/worker-env.sh && cd /home/daytona && node ${workerPath} > /home/daytona/worker.log 2>&1`,
       runAsync: true,
     });
     console.log("[API] Session command launched, cmdId:", sessionResult.cmdId);
