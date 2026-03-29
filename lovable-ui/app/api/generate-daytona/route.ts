@@ -210,13 +210,10 @@ run();
 `;
 
     // 7. Upload files and execute in Sandbox using proper SDK APIs
-    const workerPath = "/home/daytona/scripts/generation-worker.mjs";
+    // Worker MUST live in /home/daytona/ alongside node_modules (Node resolves relative to script location)
+    const workerPath = "/home/daytona/generation-worker.mjs";
     
-    // Create scripts directory using the filesystem API
-    console.log("[API] Creating scripts directory...");
-    await sandbox.fs.createFolder("/home/daytona/scripts", "755");
-    
-    // Upload the worker file directly as a Buffer — no shell pipes needed
+    // Upload the worker file directly as a Buffer
     console.log("[API] Uploading worker script...");
     await sandbox.fs.uploadFile(Buffer.from(workerContent), workerPath);
 
@@ -246,7 +243,7 @@ run();
     console.log("[API] Uploading .env file...");
     await sandbox.fs.uploadFile(
       Buffer.from(envFileContent),
-      "/home/daytona/scripts/worker-env.sh"
+      "/home/daytona/worker-env.sh"
     );
 
     // Use Daytona Sessions API for reliable background execution
@@ -257,7 +254,7 @@ run();
     // Execute the worker asynchronously in the session (source env, then run node)
     console.log("[API] Launching worker in session...");
     const sessionResult = await sandbox.process.executeSessionCommand(sessionId, {
-      command: `source /home/daytona/scripts/worker-env.sh && node ${workerPath} > /home/daytona/worker.log 2>&1`,
+      command: `source /home/daytona/worker-env.sh && node ${workerPath} > /home/daytona/worker.log 2>&1`,
       runAsync: true,
     });
     console.log("[API] Session command launched, cmdId:", sessionResult.cmdId);
