@@ -43,6 +43,9 @@ function GenerateContent() {
   const loadingStuckTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showLogsAction, setShowLogsAction] = useState(false);
   const [regenCount, setRegenCount] = useState(0);
+  const [logs, setLogs] = useState<string>("");
+  const [showConsole, setShowConsole] = useState(false);
+  const consoleEndRef = useRef<HTMLDivElement>(null);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -51,6 +54,38 @@ function GenerateContent() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (showConsole) {
+      consoleEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [logs, showConsole]);
+
+  // Log Polling
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isGenerating && sandboxId) {
+      const pollLogs = async () => {
+        try {
+          const res = await fetch(`/api/daytona-logs?sandboxId=${sandboxId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.logs) {
+              setLogs(data.logs);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to poll logs", e);
+        }
+      };
+      
+      pollLogs(); // Initial
+      interval = setInterval(pollLogs, 3000); // Every 3s
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGenerating, sandboxId]);
   
   useEffect(() => {
     if (!prompt && !initialSandboxId) {
@@ -110,6 +145,8 @@ function GenerateContent() {
       setError(null);
       setIsGenerating(true);
       setShowLogsAction(false);
+      setShowConsole(true);
+      setLogs("Initializing background agent...\n");
       
       // Start stall detection timer (3 minutes) - generation can take a while with retries
       if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
@@ -214,10 +251,8 @@ function GenerateContent() {
       const res = await fetch(`/api/daytona-logs?sandboxId=${sandboxId}`);
       const data = await res.json();
       if (data.success) {
-        setMessages(prev => [...prev, {
-          type: "error",
-          content: "WORKER LOGS:\n" + data.logs
-        }]);
+        setLogs(data.logs);
+        setShowConsole(true);
       } else {
         alert("Failed to fetch logs: " + data.error);
       }
@@ -411,9 +446,25 @@ function GenerateContent() {
         {/* Left side - Chat */}
         <div className="w-[30%] flex flex-col border-r border-gray-800">
           {/* Header */}
-          <div className="p-4 border-b border-gray-800">
-            <h2 className="text-white font-semibold">Lovable</h2>
-            <p className="text-gray-400 text-sm mt-1 break-words">{prompt}</p>
+          <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+            <div>
+              <h2 className="text-white font-semibold flex items-center gap-2">
+                Lovable
+                {isGenerating && (
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                )}
+              </h2>
+              <p className="text-gray-400 text-xs mt-1 truncate max-w-[200px]">{prompt}</p>
+            </div>
+            <button 
+              onClick={() => setShowConsole(!showConsole)}
+              className={`p-1.5 rounded-md border transition-colors ${showConsole ? 'bg-blue-600/20 border-blue-500/50 text-blue-400' : 'border-gray-800 text-gray-400 hover:text-gray-300'}`}
+              title="Toggle Agent Console"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
           </div>
           
           {/* Messages */}
@@ -602,6 +653,35 @@ function GenerateContent() {
                 <p className="text-gray-400">Preview will appear here</p>
               </div>
             )}
+          </div>
+
+          {/* Agent Console Drawer */}
+          <div className={`absolute bottom-0 left-0 right-0 bg-black/90 border-t border-gray-800 transition-all duration-300 ease-in-out z-20 ${showConsole ? 'h-[250px]' : 'h-0 overflow-hidden border-transparent'}`}>
+            <div className="h-full flex flex-col">
+              <div className="px-4 py-2 bg-gray-950 border-b border-gray-800 flex items-center justify-between sticky top-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="text-xs font-mono text-blue-400 font-bold uppercase tracking-wider">Agent Console Logs</span>
+                </div>
+                <button onClick={() => setShowConsole(false)} className="text-gray-500 hover:text-white transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-gray-300 space-y-1">
+                {logs ? (
+                  logs.split('\n').map((line, i) => (
+                    <div key={i} className={`break-words ${line.includes('[Worker]') ? 'text-blue-300' : line.includes('[Tool]') ? 'text-purple-400' : line.includes('error') || line.includes('Fatal') ? 'text-red-400' : 'text-gray-400'}`}>
+                      {line}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-600 italic">Waiting for agent to start logging...</div>
+                )}
+                <div ref={consoleEndRef} />
+              </div>
+            </div>
           </div>
         </div>
       </div>

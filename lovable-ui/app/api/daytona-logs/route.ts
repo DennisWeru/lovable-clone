@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         success: true, 
         sandboxId, 
         file: filePath,
-        content: fileBuffer.toString("utf-8")
+        logs: fileBuffer.toString("utf-8")
       });
     } catch (fsErr: any) {
        return NextResponse.json({ 
