@@ -6,8 +6,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { projectId, token, type, message, content, metadata } = body;
 
+    console.log(`[Webhook] Received ${type} update for project ${projectId}`);
+    
     if (!projectId || !token) {
-       return NextResponse.json({ error: "Missing projectId or token" }, { status: 400 });
+      console.warn("[Webhook] Missing projectId or token in payload");
+      return NextResponse.json({ error: "Missing projectId or token" }, { status: 400 });
     }
 
     const supabase = createAdminClient();

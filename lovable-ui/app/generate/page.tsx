@@ -170,7 +170,12 @@ function GenerateContent() {
             }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log(`[Generate] Realtime Subscription Status for ${currentProjectId}:`, status);
+          if (status === "CHANNEL_ERROR") {
+            setError({ message: "Realtime connection failed. Updates may not appear automatically." });
+          }
+        });
 
     } catch (err: any) {
       console.error("Error generating website:", err);

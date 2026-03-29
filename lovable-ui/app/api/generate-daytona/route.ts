@@ -41,10 +41,16 @@ export async function POST(req: NextRequest) {
     console.log("[API] Daytona SDK imported successfully");
     
     // 3. Auth & Environment
-    const supabaseAdmin = createAdminClient();
     const supabase = createClient();
-    const { data: authData } = await supabase.auth.getUser();
-    const userRole = authData?.user?.id || "anonymous";
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authData?.user) {
+      console.error("[API] Unauthorized generation attempt");
+      return NextResponse.json({ error: "Unauthorized: Please log in to generate projects" }, { status: 401 });
+    }
+    
+    const userId = authData.user.id;
+    const supabaseAdmin = createAdminClient();
 
     if (!process.env.DAYTONA_API_KEY || !process.env.GEMINI_API_KEY) {
       console.error("[API] Missing API Keys");
@@ -57,6 +63,16 @@ export async function POST(req: NextRequest) {
     let projectRecord;
     if (projectId) {
       console.log("[API] Updating project:", projectId);
+      // Verify ownership
+      const { data: existing, error: findError } = await supabaseAdmin
+        .from("projects")
+        .select("user_id")
+        .eq("id", projectId)
+        .single();
+        
+      if (findError || !existing) throw new Error("Project not found");
+      if (existing.user_id !== userId) throw new Error("Unauthorized: You do not own this project");
+
       const { data, error } = await supabaseAdmin
         .from("projects")
         .update({ webhook_token: webhookToken })
@@ -73,7 +89,7 @@ export async function POST(req: NextRequest) {
           name: prompt.split(" ").slice(0, 5).join(" "),
           prompt: prompt,
           model: model || "gemini-1.5-flash",
-          user_id: userRole,
+          user_id: userId,
           webhook_token: webhookToken,
           status: "pending"
         })
@@ -142,6 +158,8 @@ async function sendUpdate(type, data) {
 }
 
 async function run() {
+  // Give frontend a moment to subscribe to Realtime
+  await new Promise(r => setTimeout(r, 2000));
   await sendUpdate("progress", { message: "🚀 Worker started..." });
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
