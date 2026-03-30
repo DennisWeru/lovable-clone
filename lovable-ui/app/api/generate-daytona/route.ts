@@ -285,7 +285,11 @@ const tools = {
     } catch (e) { 
       console.error("[Tool] Screenshot failed:", e.message);
       return { error: "Could not take screenshot. Ensure the server is running on port 3000 and dependencies are met. Details: " + e.message }; 
-    }
+    },
+  report_progress: async ({ message }) => {
+    console.log("[Tool] Progress update:", message);
+    await sendUpdate("progress", { message });
+    return { success: true };
   }
 };
 
@@ -337,6 +341,14 @@ const toolsList = [
       description: "Take a screenshot of the website running at http://localhost:3000 to verify visual correctness.",
       parameters: { type: "object", properties: {} }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "report_progress",
+      description: "Report a high-level progress message to the user (e.g., 'Drafting the navigation menu...', 'Researching library options...'). Use this to keep the user updated during complex tasks.",
+      parameters: { type: "object", properties: { message: { type: "string" } }, required: ["message"] }
+    }
   }
 ];
 
@@ -344,7 +356,7 @@ async function runAgent() {
   console.log("[Worker] runAgent() starting...");
   await sendUpdate("progress", { message: "Agent active with tools..." });
 
-  const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. When finished, summarize your work.";
+  const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. Use report_progress frequently to tell the user what high-level task you are working on. When finished, summarize your work.";
   
   let messages = [
     { role: "system", content: systemMessage },
@@ -357,6 +369,7 @@ async function runAgent() {
   while (turns < maxTurns) {
     turns++;
     console.log("[Worker] Agent turn:", turns);
+    if (turns > 1) await sendUpdate("progress", { message: "Thinking about next steps..." });
 
     const response = await retryable(async () => {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {

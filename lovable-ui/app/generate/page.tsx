@@ -415,32 +415,59 @@ function GenerateContent() {
     }
   };
   
+  const getFriendlyToolMessage = (name: string, input: any) => {
+    switch (name) {
+      case "list_files":
+      case "list_dir":
+        return `Analyzing project structure...`;
+      case "read_file":
+        return `Reviewing code in ${input.path || input.file_path}...`;
+      case "write_file":
+        const file = input.path || input.file_path || "";
+        if (file.endsWith(".html")) return `Drafting webpage layout (${file})...`;
+        if (file.endsWith(".css")) return `Adding styles and themes (${file})...`;
+        if (file.endsWith(".js") || file.endsWith(".ts") || file.endsWith(".tsx")) return `Implementing logic in ${file}...`;
+        return `Creating ${file}...`;
+      case "run_command":
+        const cmd = input.command || "";
+        if (cmd.includes("npm install")) return `Installing project dependencies...`;
+        if (cmd.includes("npm run") || cmd.includes("node ")) return `Booting up your application...`;
+        if (cmd.includes("mkdir")) return `Setting up project folders...`;
+        return `Running system task: ${cmd.split(' ')[0]}...`;
+      case "search_docs":
+        return `Researching ${input.project || 'libraries'} documentation...`;
+      case "take_screenshot":
+        return `Taking a snapshot to verify the design...`;
+      default:
+        return `Performing agent task: ${name}...`;
+    }
+  };
+
+  const getToolIcon = (name: string) => {
+    switch (name) {
+      case "write_file": return "📝";
+      case "run_command": return "⚙️";
+      case "read_file": return "🔍";
+      case "search_docs": return "📚";
+      case "take_screenshot": return "📸";
+      case "list_files": return "📁";
+      default: return "🔧";
+    }
+  };
+
   const formatToolInput = (input: any) => {
     if (!input) return "";
     
     // Extract key information based on tool type
-    if (input.file_path) {
-      return `File: ${input.file_path}`;
+    if (input.file_path || input.path) {
+      return input.file_path || input.path;
     } else if (input.command) {
-      return `Command: ${input.command}`;
-    } else if (input.pattern) {
-      return `Pattern: ${input.pattern}`;
-    } else if (input.prompt) {
-      return `Prompt: ${input.prompt.substring(0, 100)}...`;
+      return input.command;
+    } else if (input.project) {
+      return `${input.vendor}/${input.project}`;
     }
     
-    // For other cases, show first meaningful field
-    const keys = Object.keys(input);
-    if (keys.length > 0) {
-      const firstKey = keys[0];
-      const value = input[firstKey];
-      if (typeof value === 'string' && value.length > 100) {
-        return `${firstKey}: ${value.substring(0, 100)}...`;
-      }
-      return `${firstKey}: ${value}`;
-    }
-    
-    return JSON.stringify(input).substring(0, 100) + "...";
+    return "";
   };
 
   return (
@@ -518,26 +545,57 @@ function GenerateContent() {
                 )}
                 
                 {message.type === "tool_use" && (
-                  <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800 overflow-hidden">
-                    <div className="flex items-start gap-2 text-sm">
-                      <span className="text-blue-400 flex-shrink-0">🔧 {message.name}</span>
-                      <span className="text-gray-500 break-all">{formatToolInput(message.input)}</span>
+                  <div className="flex items-start gap-3 group">
+                    <div className="w-8 h-8 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-sm">{getToolIcon(message.name || "")}</span>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-gray-300 text-sm font-medium leading-tight">
+                        {getFriendlyToolMessage(message.name || "", message.input)}
+                      </p>
+                      <p className="text-gray-500 text-[11px] font-mono truncate max-w-[200px]" title={formatToolInput(message.input)}>
+                        {message.name}({formatToolInput(message.input)})
+                      </p>
                     </div>
                   </div>
                 )}
                 
                 {message.type === "progress" && (
-                  <div className="text-gray-500 text-sm font-mono break-all">
-                    {message.content || message.message}
+                  <div className="flex items-center gap-3 py-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-500/50 animate-pulse ml-3" />
+                    <div className="text-gray-400 text-xs font-medium italic">
+                      {message.content === "Agent active with tools..." ? "Developing your website..." : (message.content || message.message)}
+                    </div>
                   </div>
                 )}
               </div>
             ))}
             
             {isGenerating && (
-              <div className="flex items-center gap-2 text-gray-400">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-                <span>Working...</span>
+              <div className="flex items-center gap-3 p-3 bg-blue-600/5 rounded-lg border border-blue-500/10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="relative">
+                  <div className="w-5 h-5 rounded-full border-2 border-blue-500/20" />
+                  <div className="absolute inset-0 w-5 h-5 rounded-full border-2 border-t-blue-500 animate-spin" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-blue-400 text-xs font-semibold uppercase tracking-wider mb-0.5">Current Activity</p>
+                  <p className="text-gray-300 text-sm truncate">
+                    {(() => {
+                      const lastTool = [...messages].reverse().find(m => m.type === "tool_use");
+                      const lastProgress = [...messages].reverse().find(m => m.type === "progress");
+                      
+                      const toolIndex = messages.lastIndexOf(lastTool!);
+                      const progressIndex = messages.lastIndexOf(lastProgress!);
+                      
+                      if (toolIndex >= 0 && toolIndex >= progressIndex) {
+                        return getFriendlyToolMessage(lastTool!.name || "", lastTool!.input);
+                      } else if (progressIndex >= 0) {
+                        return lastProgress!.content === "Agent active with tools..." ? "Thinking about next steps..." : (lastProgress!.content || lastProgress!.message);
+                      }
+                      return "Initializing background agent...";
+                    })()}
+                  </p>
+                </div>
               </div>
             )}
             
