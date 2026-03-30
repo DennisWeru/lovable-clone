@@ -318,3 +318,20 @@ The `generation-worker.mjs` script was failing with `SyntaxError: Unexpected ide
 ### Impact
 - The generation worker now starts successfully in the Daytona sandbox environment.
 - Error handling for OpenRouter API responses (like 429 rate limits) now correctly propagates the HTTP status to the retry logic.
+
+## 2026-03-30 - Optimizing Playwright Performance in Daytona
+
+### Problem
+The agent was spending significant time (minutes) at the start of each generation and during the `take_screenshot` tool execution downloading Playwright browsers (`chromium`, `ffmpeg`, etc.). This happened because the sandbox was using a generic `node:20` image that lacked these dependencies, forcing `npm install` and `npx playwright install` on every fresh run.
+
+### Decision
+- **Switched Sandbox Image**: Changed the Daytona sandbox image from `node:20` to `mcr.microsoft.com/playwright:v1.45.0-jammy`. This is an official Microsoft image that comes with Node.js and all Playwright browsers/system dependencies pre-installed.
+- **Removed Redundant Install Steps**:
+    - Removed `npx playwright install chromium` from the `take_screenshot` tool.
+    - Simplified the worker bootstrap to avoid re-installing `playwright-core` if possible (switched to `playwright` which is usually global or faster to link in this image).
+- **Added Sandbox Flags**: Added `--no-sandbox` and `--disable-setuid-sandbox` to the Chromium launch arguments to ensure compatibility with Docker-based sandbox environments.
+
+### Impact
+- **Instant Screenshots**: The agent no longer downloads 100MB+ of browser binaries during the generation process.
+- **Faster Bootstrap**: The worker spends less time in the "Bootstrapping environment" phase.
+- **Reduced Bandwidth/Cost**: Fewer external downloads from the sandbox environment.

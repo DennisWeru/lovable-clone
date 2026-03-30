@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
         console.log("[API] Creating sandbox...");
         sandbox = await daytona.create({
           public: true,
-          image: "node:20"
+          image: "mcr.microsoft.com/playwright:v1.45.0-jammy"
         });
         sandboxId = sandbox.id;
         console.log("[API] Sandbox created:", sandboxId);
@@ -172,10 +172,11 @@ async function main() {
     }
 
     // Install core dependencies (Reduced weight: removed gen-ai)
-    const deps = ["playwright-core"];
+    // Note: playwright is now pre-installed in the container image
+    const deps = ["playwright"]; 
     for (const dep of deps) {
       if (!fs.existsSync("./node_modules/" + dep)) {
-        console.log("[Worker] Installing " + dep + "...");
+        console.log("[Worker] Installing " + dep + " (if missing)...");
         try {
           execSync("npm install " + dep, { encoding: "utf8" });
         } catch (e) { console.error("[Worker] Install failed for " + dep + ":", e.message); }
@@ -232,7 +233,7 @@ const tools = {
   read_file: async ({ path: filePath }) => {
     const target = path.join(projectDir, filePath);
     if (!fs.existsSync(target)) return { error: "File not found" };
-    return { content: fs.readFileSync(target, "utf8") };
+    return { content: fs.readFileSync(target, "utf-8") };
   },
   write_file: async ({ path: filePath, content }) => {
     const target = path.join(projectDir, filePath);
@@ -268,12 +269,11 @@ const tools = {
     console.log("[Tool] Taking screenshot...");
     await sendUpdate("tool_use", { name: "take_screenshot", input: {} });
     try {
-      // Ensure playwright browser is installed
-      const { chromium } = await import("playwright-core");
-      console.log("[Worker] Ensuring chromium is installed...");
-      execSync("npx playwright install chromium", { stdio: "inherit" });
-      
-      const browser = await chromium.launch();
+      const { chromium } = await import("playwright");
+      // Browsers are already installed in this image! No npx install needed.
+      const browser = await chromium.launch({ 
+        args: ["--no-sandbox", "--disable-setuid-sandbox"] // Required for some Docker environments
+      });
       const page = await browser.newPage();
       await page.goto("http://localhost:3000", { waitUntil: "networkidle", timeout: 30000 });
       const buffer = await page.screenshot();
@@ -487,7 +487,8 @@ const envFileContent = Object.entries({
   CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || "",
   SANDBOX_ID: sandboxId,
   PREVIEW_URL: previewUrl,
-  SITE_URL: `${protocol}://${host}`
+  SITE_URL: `${protocol}://${host}`,
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
 console.log("[API] Uploading .env file...");
