@@ -8,7 +8,7 @@ export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
 
-  const [model, setModel] = useState("gemini-2.5-flash");
+  const [model, setModel] = useState("moonshotai/kimi-k2.5");
 
   const handleGenerate = () => {
     if (!prompt.trim()) return;
@@ -52,9 +52,10 @@ export default function Home() {
                 onChange={(e) => setModel(e.target.value)}
                 className="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
               >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+                <option value="moonshotai/kimi-k2.5">Kimi K2.5 (Default)</option>
+                <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+                <option value="google/gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro</option>
+                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
               </select>
             </div>
             <div className="relative flex items-center bg-black rounded-2xl border border-gray-800 shadow-2xl px-2">

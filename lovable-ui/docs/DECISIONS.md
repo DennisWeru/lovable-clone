@@ -361,3 +361,27 @@ According to Daytona's documentation on `preview-and-authentication`:
 - Eliminates the manual "I Understand" click for users.
 - Improves the premium "Lovable" feel of the application.
 - Enhances security by using time-limited signed tokens instead of generic public URLs.
+
+## 2026-03-30 - Model Configuration & Kimi Default Fix
+
+### Problem
+The user observed that OpenRouter was using a Gemini model instead of Kimi, despite their preference.
+
+### Diagnosis
+1.  **Invalid Model IDs**: The frontend was sending `gemini-2.5-flash`, which is not a valid OpenRouter model ID. OpenRouter likely fuzzy-matched this to a default Gemini model.
+2.  **Missing UI Options**: The model selector in `app/page.tsx` lacked an option for Kimi, making it impossible to select via the UI.
+3.  **Default Values**: Both the home page and generation page defaulted to the non-existent `gemini-2.5-flash`.
+
+### Decision
+1.  **Standardize Model IDs**: Updated all `select` and state values to use official OpenRouter IDs in `app/page.tsx` and `app/generate/page.tsx`:
+    -   Kimi: `moonshotai/kimi-k2.5`
+    -   Gemini 2.0 Flash: `google/gemini-2.0-flash-001`
+    -   Gemini 2.0 Pro: `google/gemini-2.0-pro-exp-02-05`
+    -   Claude 3.5 Sonnet: `anthropic/claude-3.5-sonnet`
+2.  **Set Kimi as Default**: Changed the default model state to `moonshotai/kimi-k2.5`.
+3.  **Expose Kimi in UI**: Explicitly added Kimi K2.5 as the default option in the homepage dropdown.
+
+### Impact
+- Eliminates ambiguity in model routing.
+- Ensures the AI receives the correct model parameter via the `GENERATION_MODEL` environment variable in the Daytona worker.
+- Resonates with the user's "Kimi-first" setup.
