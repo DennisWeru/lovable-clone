@@ -154,11 +154,12 @@ export async function POST(req: NextRequest) {
       }
 
       if (!sandbox) {
-        console.log("[API] Creating sandbox (2 CPU / 4GB RAM)...");
+        console.log("[API] Creating sandbox (2 CPU / 4GB RAM, 60min auto-stop)...");
         sandbox = await daytona.create({
           public: false,
           image: "mcr.microsoft.com/playwright:v1.45.0-jammy",
-          resources: { cpu: 2, memory: 4 }
+          resources: { cpu: 2, memory: 4 },
+          autoStopInterval: 60
         });
         sandboxId = sandbox.id;
         console.log("[API] Sandbox created:", sandboxId);
@@ -439,7 +440,7 @@ async function runAgent() {
   await sendUpdate("progress", { message: "Agent active..." });
 
   const isResuming = INITIAL_HISTORY.length > 0;
-  const systemMessage = "You are a Senior Developer Agent. Build a complete website. ENVIRONMENT: Node v20.15.0 is present. PREFERENCE: By default, use React, Vite, and Tailwind CSS unless the user specifies otherwise. DESIGN: Aim for premium, modern aesthetics (vibrant colors, sleek dark modes, glassmorphism, smooth animations). WORKFLOW: 1. Research/Plan. 2. Initialize Project: If not present, initialize React+Vite in the current directory using 'npm create vite@5 . -- --template react -- --yes'. 3. Setup Tailwind: Install tailwindcss, postcss, autoprefixer and configure them. 4. Write code (write_file). 5. Dependencies: run 'npm install --no-audit --no-fund'. 6. Launch: 'npm run dev &'. 7. Verify: Use 'is_port_in_use' and 'take_screenshot'. STRICT RULES: 1. LOCK VERSIONS: Use Vite 5, NOT Vite latest, to maintain Node.js compatibility. 2. PLAYWRIGHT: If you must install playwright, use 'playwright@1.45.0' to match the system image. 3. NEVER use a leading colon (:) in shell commands. Use 'ls', not ':ls'. 4. ALWAYS install dependencies before starting the server. 5. Use report_progress frequently. When finished, summarize your work.";
+  const systemMessage = "You are a Senior Developer Agent. Build a complete website. ENVIRONMENT: Node v20.15.0 is present. PREFERENCE: By default, use React, Vite, and Tailwind CSS unless the user specifies otherwise. DESIGN: Aim for premium, modern aesthetics (vibrant colors, sleek dark modes, glassmorphism, smooth animations). WORKFLOW: 1. Research/Plan. 2. Initialize Project: If not present, initialize React+Vite in the current directory using 'npm create vite@5 . -- --template react -- --yes'. 3. Setup Tailwind: Install tailwindcss, postcss, autoprefixer and configure them. 4. Write code (write_file). 5. Dependencies: run 'npm install --no-audit --no-fund'. 6. Launch: CRITICAL - you MUST start the dev server bound to all interfaces: 'npx vite --host 0.0.0.0 --port 3000 &' (NOT 'npm run dev &' which binds to localhost only). 7. Verify: Use 'is_port_in_use' and 'take_screenshot'. STRICT RULES: 1. LOCK VERSIONS: Use Vite 5, NOT Vite latest, to maintain Node.js compatibility. 2. PLAYWRIGHT: If you must install playwright, use 'playwright@1.45.0' to match the system image. 3. NEVER use a leading colon (:) in shell commands. Use 'ls', not ':ls'. 4. ALWAYS install dependencies before starting the server. 5. Use report_progress frequently. When finished, summarize your work. 6. ALWAYS start vite with '--host 0.0.0.0 --port 3000' so the preview proxy can reach it.";
   
   let messages = [];
   if (isResuming) {
@@ -621,21 +622,22 @@ main();
 
 console.log("[API] Webhook URL set to:", webhookUrl);
 
-// Get actual signed preview link from Daytona SDK (bypasses warning page in iframes)
-console.log("[API] Getting signed preview link for port 3000...");
+// Get stable preview link from Daytona SDK (non-expiring, unlike signed URLs)
+console.log("[API] Getting preview link for port 3000...");
 let previewUrl = `https://${sandboxId}.daytona.app`; // Fallback
 try {
-  // 3600 seconds = 1 hour expiry
-  const signedPreview = await sandbox.getSignedPreviewUrl(3000, 3600);
-  previewUrl = signedPreview.url;
-  console.log("[API] Signed preview URL obtained:", previewUrl.slice(0, 50) + "...");
+  const preview = await sandbox.getPreviewLink(3000);
+  previewUrl = preview.url;
+  console.log("[API] Preview URL obtained:", previewUrl);
 } catch (e: any) {
-  console.warn("[API] Could not get signed preview link via SDK, falling back to standard link:", e.message);
+  console.warn("[API] Could not get preview link, trying signed URL as fallback:", e.message);
   try {
-    const preview = await sandbox.getPreviewLink(3000);
-    previewUrl = preview.url;
+    // 7200 seconds = 2 hour expiry as fallback
+    const signedPreview = await sandbox.getSignedPreviewUrl(3000, 7200);
+    previewUrl = signedPreview.url;
+    console.log("[API] Signed preview URL obtained:", previewUrl.slice(0, 50) + "...");
   } catch (err) {
-    console.warn("[API] Standard preview link also failed, using raw fallback");
+    console.warn("[API] All preview link methods failed, using raw fallback");
   }
 }
 

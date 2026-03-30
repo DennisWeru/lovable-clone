@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
+
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("[API] Critical: Missing Supabase Environment Variables");
-      return NextResponse.json(
-        { error: "Server configuration error: Missing Supabase keys" },
-        { status: 500 }
-      );
-    }
-
     const supabase = createClient();
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const user = authData?.user;
@@ -35,7 +27,8 @@ export async function POST(req: NextRequest) {
 
     // Verify ownership
     if (projectId) {
-      const { data: project, error: projectError } = await supabase
+      const supabaseAdmin = createAdminClient();
+      const { data: project, error: projectError } = await supabaseAdmin
         .from("projects")
         .select("user_id")
         .eq("id", projectId)
@@ -56,85 +49,102 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log(`[API] Restarting server for sandbox ${sandboxId} for user ${user.id}`);
+    console.log(`[Restart] Restarting server for sandbox ${sandboxId} for user ${user.id}`);
 
-    const encoder = new TextEncoder();
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
+    // Dynamic import for Daytona SDK (ESM compat)
+    const { Daytona } = await import("@daytonaio/sdk");
+    const daytona = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
 
-    (async () => {
+    // Find and wake the sandbox
+    const list = await daytona.list();
+    const sandboxItem = list.items.find((s: any) => s.id === sandboxId);
+
+    if (!sandboxItem) {
+      return NextResponse.json(
+        { error: `Sandbox ${sandboxId} not found. It may have been deleted.` },
+        { status: 404 }
+      );
+    }
+
+    // Start sandbox if stopped
+    if (sandboxItem.state === "stopped" || sandboxItem.state === "archived") {
+      console.log(`[Restart] Sandbox is ${sandboxItem.state}, starting it...`);
+      await sandboxItem.start();
+      // Wait for it to be ready
+      await new Promise(r => setTimeout(r, 3000));
+      console.log(`[Restart] Sandbox started.`);
+    }
+
+    // Check if project files exist
+    const checkRes = await sandboxItem.process.executeCommand(
+      'test -d website-project && ls website-project/package.json 2>/dev/null && echo "OK" || echo "MISSING"'
+    );
+    const hasProject = checkRes.result?.includes("OK");
+
+    if (!hasProject) {
+      return NextResponse.json(
+        { error: "Project files not found in sandbox. The sandbox may have been reset. Please regenerate." },
+        { status: 410 }
+      );
+    }
+
+    // Kill any existing server on port 3000
+    console.log("[Restart] Killing existing processes on port 3000...");
+    await sandboxItem.process.executeCommand(
+      'fuser -k 3000/tcp 2>/dev/null || pkill -f "vite" 2>/dev/null || true'
+    );
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Start dev server with correct host binding
+    console.log("[Restart] Starting Vite dev server...");
+    await sandboxItem.process.executeCommand(
+      'cd website-project && nohup npx vite --host 0.0.0.0 --port 3000 > /tmp/dev-server.log 2>&1 &'
+    );
+
+    // Wait for server to start
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Verify server is listening
+    const portCheck = await sandboxItem.process.executeCommand(
+      'curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "0"'
+    );
+    const httpCode = portCheck.result?.trim();
+    const isRunning = httpCode === "200" || httpCode === "304";
+
+    // Get fresh preview URL
+    let previewUrl = "";
+    try {
+      const preview = await sandboxItem.getPreviewLink(3000);
+      previewUrl = preview.url;
+    } catch {
       try {
-        const scriptPath = path.join(process.cwd(), "scripts", "start-dev-server.ts");
-
-        // spawn might fail on Vercel serverless environment
-        const child = spawn("npx", ["tsx", scriptPath, sandboxId], {
-          env: {
-            ...process.env,
-            DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
-          },
-        });
-
-        let previewUrl = "";
-
-        child.stdout.on("data", async (data) => {
-          const output = data.toString().trim();
-          if (output) {
-            await writer.write(
-              encoder.encode(`data: ${JSON.stringify({ type: "progress", message: output })}\n\n`)
-            );
-
-            const previewMatch = output.match(/Preview URL:\s*(https:\/\/[^\s]+)/);
-            if (previewMatch) previewUrl = previewMatch[1];
-          }
-        });
-
-        child.stderr.on("data", async (data) => {
-          const error = data.toString();
-          console.error("[Restart Error]:", error);
-
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ type: "error", message: error.trim() })}\n\n`)
-          );
-        });
-
-        await new Promise((resolve, reject) => {
-          child.on("exit", (code) => {
-            if (code === 0) resolve(code);
-            else reject(new Error(`Process exited with code ${code}. This usually fails in Vercel Serverless environments.`));
-          });
-          child.on("error", reject);
-        });
-
-        if (previewUrl) {
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ type: "complete", previewUrl })}\n\n`)
-          );
-        } else {
-          throw new Error("Failed to get preview URL after server restart");
-        }
-
-        await writer.write(encoder.encode("data: [DONE]\n\n"));
-      } catch (error: any) {
-        console.error("[API] Error during restart:", error);
-        await writer.write(
-          encoder.encode(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`)
-        );
-        await writer.write(encoder.encode("data: [DONE]\n\n"));
-      } finally {
-        await writer.close();
+        const signed = await sandboxItem.getSignedPreviewUrl(3000, 7200);
+        previewUrl = signed.url;
+      } catch {
+        previewUrl = `https://${sandboxId}.daytona.app`;
       }
-    })();
+    }
 
-    return new Response(stream.readable, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
+    // Update project with fresh preview URL
+    if (projectId && previewUrl) {
+      const supabaseAdmin = createAdminClient();
+      await supabaseAdmin
+        .from("projects")
+        .update({ preview_url: previewUrl })
+        .eq("id", projectId);
+    }
+
+    console.log(`[Restart] Done. Server running: ${isRunning}, Preview: ${previewUrl}`);
+
+    return NextResponse.json({
+      success: true,
+      serverRunning: isRunning,
+      httpCode,
+      previewUrl,
     });
 
   } catch (error: any) {
-    console.error("[API] Top-level Error:", error);
+    console.error("[Restart] Top-level Error:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }
