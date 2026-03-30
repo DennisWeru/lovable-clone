@@ -59,7 +59,18 @@ export async function POST(req: NextRequest) {
 
     const webhookToken = crypto.randomUUID();
 
-    // 4. Database Project Record
+    // 4. Pre-flight Credit Check
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("credits")
+      .eq("id", userId)
+      .single();
+
+    if (!profile || (profile.credits || 0) < 50) {
+      return NextResponse.json({ error: "Insufficient credits: Please top up to continue generation." }, { status: 403 });
+    }
+
+    // 5. Database Project Record
     let projectRecord;
     type LLMMessage = {
       role: "user" | "assistant" | "system" | "tool";
@@ -145,7 +156,7 @@ export async function POST(req: NextRequest) {
       if (!sandbox) {
         console.log("[API] Creating sandbox (2 CPU / 4GB RAM)...");
         sandbox = await daytona.create({
-          public: true,
+          public: false,
           image: "mcr.microsoft.com/playwright:v1.45.0-jammy",
           resources: { cpu: 2, memory: 4 }
         });
@@ -183,9 +194,9 @@ async function retryable(fn, maxRetries = 3) {
       return await fn();
     } catch (e) {
       if ((e.status === 429 || (e.message && e.message.includes("429"))) && i < maxRetries - 1) {
-        console.warn("[Worker] Quota exceeded (429). Retrying in 45s (" + (i+1) + "/" + (maxRetries) + ")...");
-        await sendUpdate("progress", { message: "⚠️ Quota exceeded. Retrying in 45s..." });
-        await sleep(45000);
+        console.warn("[Worker] Quota exceeded (429). Retrying in 30s (" + (i+1) + "/" + (maxRetries) + ")...");
+        await sendUpdate("progress", { message: "⚠️ Quota exceeded. Retrying in 30s..." });
+        await sleep(30000);
         continue;
       }
       throw e;
@@ -516,7 +527,9 @@ async function runAgent() {
     }
 
     console.log("[Worker] Processing tool calls:", message.tool_calls.length);
-    for (const toolCall of message.tool_calls) {
+    
+    // Execute multiple tool calls in parallel for efficiency where safe
+    const toolResults = await Promise.all(message.tool_calls.map(async (toolCall) => {
       const { name, arguments: argsString } = toolCall.function;
       const args = JSON.parse(argsString);
       console.log("[Tool Call]:", name + "(" + JSON.stringify(args) + ")");
@@ -531,18 +544,37 @@ async function runAgent() {
         result = { error: "Unknown tool" };
       }
 
-      console.log("[Tool Result]:", JSON.stringify(result).slice(0, 500) + (JSON.stringify(result).length > 500 ? "..." : ""));
+      console.log("[Tool Result]:", name, JSON.stringify(result).slice(0, 500) + (JSON.stringify(result).length > 500 ? "..." : ""));
 
+      // Context Window Management: If this is a screenshot, we keep the original for the LLM now,
+      // but we will truncate it in the history later to save tokens.
       const toolMsg = {
         role: "tool",
         tool_call_id: toolCall.id,
         name: name,
         content: JSON.stringify(result)
       };
-      messages.push(toolMsg);
 
       // PERSIST TOOL RESULT
       await sendUpdate("tool_result", { content: toolMsg.content, metadata: { tool_call_id: toolCall.id, name: name } });
+      
+      return toolMsg;
+    }));
+
+    // Add all results to message history
+    messages.push(...toolResults);
+
+    // Context Window Optimization: After tool results are added, 
+    // find past screenshot results and replace with a summary to save tokens.
+    // We keep the last 2 turns of results intact for immediate context.
+    if (messages.length > 5) {
+      for (let i = 0; i < messages.length - 3; i++) {
+        const msg = messages[i];
+        if (msg.role === "tool" && msg.name === "take_screenshot" && msg.content.length > 1000) {
+          console.log("[Worker] Cleaning up old screenshot tokens...");
+          msg.content = JSON.stringify({ note: "Screenshot removed to save tokens. The visual state was previously analyzed.", success: true });
+        }
+      }
     }
   }
 
@@ -577,8 +609,9 @@ main();
       protocol = "http";
     }
     
-    let webhookUrl = `${ protocol }://${host}/api/webhooks/daytona-progress`;
-if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`;
+    let webhookUrl = process.env.WEBHOOK_BASE_URL 
+      ? `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`
+      : `${protocol}://${host}/api/webhooks/daytona-progress`;
 
 console.log("[API] Webhook URL set to:", webhookUrl);
 
