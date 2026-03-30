@@ -61,12 +61,21 @@ export async function POST(req: NextRequest) {
 
     // 4. Database Project Record
     let projectRecord;
+    type LLMMessage = {
+      role: "user" | "assistant" | "system" | "tool";
+      content?: string;
+      tool_calls?: any[];
+      tool_call_id?: string;
+      name?: string;
+    };
+    let initialHistory: LLMMessage[] = [];
+
     if (projectId) {
-      console.log("[API] Updating project:", projectId);
+      console.log("[API] Updating existing project:", projectId);
       // Verify ownership
       const { data: existing, error: findError } = await supabaseAdmin
         .from("projects")
-        .select("user_id")
+        .select("user_id, prompt")
         .eq("id", projectId)
         .single();
 
@@ -81,6 +90,25 @@ export async function POST(req: NextRequest) {
         .single();
       if (error) throw new Error(`DB Update Error: ${error.message}`);
       projectRecord = data;
+
+      // FETCH HISTORY for existing project
+      console.log("[API] Fetching history for project resume...");
+      const { data: historyMsgs, error: histError } = await supabaseAdmin
+        .from("project_messages")
+        .select("type, content, metadata")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true });
+      
+      if (!histError && historyMsgs && historyMsgs.length > 0) {
+        // Map DB messages to LLM format
+        initialHistory = (historyMsgs.map(m => {
+          if (m.type === "user") return { role: "user", content: m.content } as LLMMessage;
+          if (m.type === "claude_message") return { role: "assistant", content: m.content || "", tool_calls: m.metadata?.tool_calls } as LLMMessage;
+          if (m.type === "tool_result") return { role: "tool", tool_call_id: m.metadata?.tool_call_id, name: m.metadata?.name, content: m.content } as LLMMessage;
+          return null;
+        }).filter(Boolean) as LLMMessage[]);
+        console.log(`[API] Loaded ${initialHistory.length} history messages`);
+      }
     } else {
       console.log("[API] Inserting new project...");
       const { data, error } = await supabaseAdmin
@@ -207,6 +235,7 @@ const CONTEXT7_API_KEY = process.env.CONTEXT7_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
 const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
 const SITE_URL = process.env.SITE_URL || "https://lovable-clone.vercel.app";
+const INITIAL_HISTORY = JSON.parse(process.env.INITIAL_HISTORY || "[]");
 
 async function sendUpdate(type, data) {
   if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
@@ -355,14 +384,26 @@ const toolsList = [
 
 async function runAgent() {
   console.log("[Worker] runAgent() starting...");
-  await sendUpdate("progress", { message: "Agent active with tools..." });
+  await sendUpdate("progress", { message: "Agent active..." });
 
+  const isResuming = INITIAL_HISTORY.length > 0;
   const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. Use report_progress frequently to tell the user what high-level task you are working on. When finished, summarize your work.";
   
-  let messages = [
-    { role: "system", content: systemMessage },
-    { role: "user", content: "User Request: " + PROMPT }
-  ];
+  let messages = [];
+  if (isResuming) {
+    console.log("[Worker] Resuming from history (" + INITIAL_HISTORY.length + " msgs)");
+    messages = INITIAL_HISTORY;
+    // Add a reminder that we are resuming and should check the current state
+    messages.push({ 
+      role: "user", 
+      content: "I'm opening this project again. Please check the current files and see if the preview server is running (at port 3000). If not running, start it. Then continue with my initial request: " + PROMPT 
+    });
+  } else {
+    messages = [
+      { role: "system", content: systemMessage },
+      { role: "user", content: "User Request: " + PROMPT }
+    ];
+  }
 
   let turns = 0;
   const maxTurns = 25;
@@ -370,7 +411,7 @@ async function runAgent() {
   while (turns < maxTurns) {
     turns++;
     console.log("[Worker] Agent turn:", turns);
-    if (turns > 1) await sendUpdate("progress", { message: "Thinking about next steps..." });
+    if (turns > 1 || isResuming) await sendUpdate("progress", { message: "Thinking about next steps..." });
 
     const response = await retryable(async () => {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -385,7 +426,10 @@ async function runAgent() {
           model: MODEL,
           messages: messages,
           tools: toolsList,
-          tool_choice: "auto"
+          tool_choice: "auto",
+          cache_control: { type: "ephemeral" },
+          user: PROJECT_ID,
+          session_id: PROJECT_ID
         })
       });
 
@@ -401,6 +445,9 @@ async function runAgent() {
     const choice = response.choices[0];
     const message = choice.message;
     messages.push(message);
+
+    // PERSIST ASSISTANT MESSAGE
+    await sendUpdate("claude_message", { content: message.content || "", metadata: { tool_calls: message.tool_calls } });
 
     if (choice.finish_reason === "stop" || !message.tool_calls) {
       console.log("[Worker] Agent finished.");
@@ -431,12 +478,16 @@ async function runAgent() {
         result = { error: "Unknown tool" };
       }
 
-      messages.push({
+      const toolMsg = {
         role: "tool",
         tool_call_id: toolCall.id,
         name: name,
         content: JSON.stringify(result)
-      });
+      };
+      messages.push(toolMsg);
+
+      // PERSIST TOOL RESULT
+      await sendUpdate("tool_result", { content: toolMsg.content, metadata: { tool_call_id: toolCall.id, name: name } });
     }
   }
 
@@ -497,7 +548,8 @@ const envFileContent = Object.entries({
   SANDBOX_ID: sandboxId,
   PREVIEW_URL: previewUrl,
   SITE_URL: `${protocol}://${host}`,
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",
+  INITIAL_HISTORY: JSON.stringify(initialHistory)
 }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
 console.log("[API] Uploading .env file...");
