@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import ModelSelector from "@/components/ModelSelector";
 
 export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
 
-  const [model, setModel] = useState("openai/gpt-5.3-codex");
+  const [model, setModel] = useState("openai/gpt-4o-2024-08-06"); // Update default model (more standard)
 
   const handleGenerate = () => {
     if (!prompt.trim()) return;
@@ -47,16 +48,12 @@ export default function Home() {
           <div className="relative max-w-2xl mx-auto">
             <div className="mb-4 flex items-center justify-center gap-4">
               <span className="text-sm font-medium text-gray-400">Select Model:</span>
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
-              >
-                <option value="openai/gpt-5.3-codex">GPT-5.3-Codex (Default)</option>
-                <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
-                <option value="google/gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro</option>
-                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-              </select>
+              <div className="w-[300px]">
+                <ModelSelector
+                  value={model}
+                  onChange={(val) => setModel(val)}
+                />
+              </div>
             </div>
             <div className="relative flex items-center bg-black rounded-2xl border border-gray-800 shadow-2xl px-2">
               {/* Textarea */}

@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
         .insert({
           name: prompt.split(" ").slice(0, 5).join(" "),
           prompt: prompt,
-          model: model || "openai/gpt-5.3-codex",
+          model: model || "openai/gpt-4o-2024-08-06",
           user_id: userId,
           webhook_token: webhookToken,
           status: "pending"
@@ -636,7 +636,7 @@ try {
 // Write env vars to a file since SessionExecuteRequest doesn't support env
 const envFileContent = Object.entries({
   GENERATION_PROMPT: prompt,
-  GENERATION_MODEL: model || "openai/gpt-5.3-codex",
+  GENERATION_MODEL: model || "openai/gpt-4o-2024-08-06",
   PROJECT_ID: projectRecord.id,
   WEBHOOK_TOKEN: webhookToken,
   WEBHOOK_URL: webhookUrl,
