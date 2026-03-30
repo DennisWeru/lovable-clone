@@ -378,7 +378,7 @@ async function runAgent() {
       if (!resp.ok) {
         const txt = await resp.text();
         const err = new Error("OpenRouter API Error: " + resp.status + " " + txt);
-        (err as any).status = resp.status;
+        err.status = resp.status;
         throw err;
       }
       return await resp.json();

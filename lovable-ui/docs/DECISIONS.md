@@ -304,3 +304,17 @@ The application relied exclusively on the Gemini SDK, limiting model choice and 
 ### Impact
 - **Sustainable Premium Experience**: New users have enough credits for a full iterative generation using moonshotai/kimi-k2.5 , improving first-impression retention.
 - **Accurate Billing**: Every request is now billed down to the ten-thousandth of a dollar ($0.0001), protecting the platform's margins.
+
+## 2026-03-30 - Fix: TypeScript Syntax in Generated Worker Script
+
+### Problem
+The `generation-worker.mjs` script was failing with `SyntaxError: Unexpected identifier 'as'` in the Daytona sandbox. This occurred because a TypeScript type assertion (`err as any`) was included in the `workerContent` template literal in `route.ts`, but the sandbox executes the script using standard Node.js (ESM), which does not support TypeScript syntax.
+
+### Decision
+- Removed the `as any` type assertion from the `workerContent` template in `app/api/generate-daytona/route.ts`.
+- Changed `(err as any).status = resp.status;` to `err.status = resp.status;`.
+- Verified that no other TypeScript-specific syntax (type annotations, interfaces, etc.) remains in the generated worker script.
+
+### Impact
+- The generation worker now starts successfully in the Daytona sandbox environment.
+- Error handling for OpenRouter API responses (like 429 rate limits) now correctly propagates the HTTP status to the retry logic.
