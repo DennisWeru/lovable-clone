@@ -523,7 +523,16 @@ async function runAgent() {
   }
 
   console.warn("[Worker] Max turns reached.");
-  await sendUpdate("error", { message: "Maximum agent turns reached." });
+  await sendUpdate("complete", { 
+    message: "I've made some progress! Click continue to keep building.", 
+    metadata: { 
+      sandboxId: SANDBOX_ID, 
+      previewUrl: PREVIEW_URL,
+      reachedLimit: true,
+      genId: response?.id,
+      usage: response?.usage
+    } 
+  });
 }
 
 main();
