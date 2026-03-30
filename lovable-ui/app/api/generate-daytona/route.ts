@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
         .insert({
           name: prompt.split(" ").slice(0, 5).join(" "),
           prompt: prompt,
-          model: model || "openai/gpt-4o-2024-08-06",
+          model: model || "google/gemini-3.1-flash-lite-preview",
           user_id: userId,
           webhook_token: webhookToken,
           status: "pending"
@@ -253,7 +253,7 @@ async function main() {
 }
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
-const MODEL = process.env.GENERATION_MODEL || "anthropic/claude-3.5-sonnet:beta";
+const MODEL = process.env.GENERATION_MODEL || "google/gemini-3.1-flash-lite-preview";
 const PROJECT_ID = process.env.PROJECT_ID || "";
 const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || "";

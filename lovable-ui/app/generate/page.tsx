@@ -25,7 +25,7 @@ function GenerateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const prompt = searchParams.get("prompt") || "";
-  const model = searchParams.get("model") || "openai/gpt-4o-2024-08-06";
+  const model = searchParams.get("model") || "google/gemini-3.1-flash-lite-preview";
   const initialSandboxId = searchParams.get("sandboxId");
   const initialPreviewUrl = searchParams.get("previewUrl");
   const projectId = searchParams.get("projectId");

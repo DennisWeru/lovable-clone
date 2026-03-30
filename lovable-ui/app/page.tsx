@@ -9,7 +9,7 @@ export default function Home() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
 
-  const [model, setModel] = useState("openai/gpt-4o-2024-08-06"); // Update default model (more standard)
+  const [model, setModel] = useState("google/gemini-3.1-flash-lite-preview"); // Update default model (Gemini 3.1 Flash Lite)
 
   const handleGenerate = () => {
     if (!prompt.trim()) return;
