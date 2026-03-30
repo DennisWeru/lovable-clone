@@ -17,8 +17,8 @@ async function getPreviewUrl(sandboxId: string, port: number = 3000) {
 
   try {
     // Get sandbox
-    const sandboxes = await daytona.list();
-    const sandbox = sandboxes.find((s: any) => s.id === sandboxId);
+    const result = await daytona.list();
+    const sandbox = result.items.find((s: any) => s.id === sandboxId);
     
     if (!sandbox) {
       throw new Error(`Sandbox ${sandboxId} not found`);

@@ -17,8 +17,8 @@ async function removeSandbox(sandboxId: string) {
 
   try {
     console.log(`Removing sandbox: ${sandboxId}...`);
-    const sandboxes = await daytona.list();
-    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    const result = await daytona.list();
+    const sandbox = result.items.find(s => s.id === sandboxId);
     if (!sandbox) {
       console.log(`Sandbox ${sandboxId} not found.`);
       return;
