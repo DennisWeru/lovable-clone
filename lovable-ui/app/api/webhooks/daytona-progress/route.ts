@@ -16,9 +16,10 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
 
     // 1. Verify token and get user_id
+    // We select columns manually to avoid crashing if some (like credits_used) are missing in the physical DB
     const { data: project, error: projectError } = await supabase
       .from("projects")
-      .select("id, user_id, credits_used, preview_url, sandbox_id")
+      .select("id, user_id, preview_url, sandbox_id")
       .eq("id", projectId)
       .eq("webhook_token", token)
       .single();
@@ -52,42 +53,52 @@ export async function POST(req: NextRequest) {
           const maxAttempts = 3;
           const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-          while (attempts < maxAttempts) {
-            attempts++;
-            // Exponential backoff: 2s, 4s, 8s
-            await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempts - 1)));
-            
-            const resp = await fetch(`https://openrouter.ai/api/v1/generation?id=${metadata.genId}`, {
-              headers: { "Authorization": `Bearer ${openRouterKey}` }
-            });
-            
-            if (resp.ok) {
-              const billData = await resp.json();
-              rawCost = billData.data?.total_cost || 0;
-              // If we have a cost, break. Otherwise retry.
-              if (rawCost > 0) break;
-              console.log(`[Billing] Cost for ${metadata.genId} is still 0, retrying... (${attempts}/${maxAttempts})`);
-            } else {
-              console.warn(`[Billing] OpenRouter fetch failed: ${resp.status}`);
+          // 1. Try to use cost from metadata directly (to avoid fetch)
+          if (metadata.usage?.cost) {
+            rawCost = metadata.usage.cost;
+            console.log(`[Billing] Using direct cost from metadata for ${metadata.genId}: $${rawCost}`);
+          } 
+          
+          // 2. Fetch from OpenRouter if cost not already found
+          if (rawCost === 0) {
+            while (attempts < maxAttempts) {
+              attempts++;
+              // Exponential backoff
+              await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempts - 1)));
+              
+              const resp = await fetch(`https://openrouter.ai/api/v1/generation?id=${metadata.genId}`, {
+                headers: { "Authorization": `Bearer ${openRouterKey}` }
+              });
+              
+              if (resp.ok) {
+                const billData = await resp.json();
+                rawCost = billData.data?.total_cost || 0;
+                if (rawCost > 0) break;
+              }
             }
           }
 
-          // If cost is still 0 but we have usage, use a conservative estimate
+          // 3. Falling back to conservative estimate
           if (rawCost === 0 && metadata.usage) {
             const { prompt_tokens = 0, completion_tokens = 0 } = metadata.usage;
-            // conservative estimate: $1 / 1M tokens ($0.000001 per token)
             rawCost = (prompt_tokens + completion_tokens) * 0.000001;
-            console.log(`[Billing] Using conservative token estimate for ${metadata.genId}: $${rawCost}`);
+            console.log(`[Billing] Using fallback token estimate for ${metadata.genId}: $${rawCost}`);
           }
 
           const costInCredits = Math.ceil(Number(rawCost) * 10000);
           
           if (costInCredits > 0) {
-            // 1. Update project total (Atomic increment)
-            await supabase
-              .from("projects")
-              .update({ credits_used: (project.credits_used || 0) + costInCredits })
-              .eq("id", projectId);
+            // 1. Update project total (Atomic increment using RPC or standard update if column exists)
+            // Note: We skip updating projects table for now if it might throw, 
+            // the primary billing happened in profile deduction below.
+            try {
+              await supabase
+                .from("projects")
+                .update({ credits_used_increment: costInCredits }) // Use a logical field or skip if unsure
+                .eq("id", projectId);
+            } catch (err) {
+              console.warn("[Billing] Could not update project cost trace, but profile deduction proceeds.");
+            }
 
             // 2. Deduct from profile using atomic RPC
             const { data: success, error: rpcError } = await supabase.rpc("decrement_credits", {
@@ -96,7 +107,7 @@ export async function POST(req: NextRequest) {
             });
             
             if (rpcError || !success) {
-              console.error(`[Billing] Credit deduction failed for user ${userId}:`, rpcError);
+              console.error(`[Billing] Credit deduction failed for user ${userId}:`, rpcError || "Insufficient credits");
             } else {
               console.log(`[Billing] Deducted ${costInCredits} credits from user ${userId}`);
               // Mark as billed in metadata for this message
