@@ -11,35 +11,55 @@ export default function Navbar() {
   const supabase = createClient();
   const router = useRouter();
 
+  const userRef = React.useRef<User | null>(null);
+  
   useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    let isMounted = true;
+
     const getUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!isMounted) return;
       
-      if (user) {
+      setUser(currentUser);
+      
+      if (currentUser) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("credits")
-          .eq("id", user.id)
+          .eq("id", currentUser.id)
           .single();
-        if (profile) setCredits(profile.credits);
+        
+        if (isMounted && profile) {
+          setCredits(profile.credits);
+        }
       }
     };
 
     getUserData();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          supabase
+      async (_event, session) => {
+        if (!isMounted) return;
+        
+        const newUser = session?.user ?? null;
+        setUser(newUser);
+        
+        if (newUser) {
+          const { data: profile } = await supabase
             .from("profiles")
             .select("credits")
-            .eq("id", session.user.id)
-            .single()
-            .then(({ data }) => {
-              if (data) setCredits(data.credits);
-            });
+            .eq("id", newUser.id)
+            .single();
+          
+          if (isMounted && profile) {
+            setCredits(profile.credits);
+          }
+        } else {
+          setCredits(null);
         }
       }
     );
@@ -51,7 +71,7 @@ export default function Navbar() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles" },
         (payload) => {
-          if (user && payload.new.id === user.id) {
+          if (isMounted && userRef.current && payload.new.id === userRef.current.id) {
             setCredits(payload.new.credits);
           }
         }
@@ -59,10 +79,11 @@ export default function Navbar() {
       .subscribe();
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [user, supabase]);
+  }, [supabase]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

@@ -11,24 +11,26 @@ create table public.profiles (
 alter table public.profiles enable row level security;
 
 -- Create policies
-create policy "Public profiles are viewable by everyone." on profiles
-  for select using (true);
+create policy "Users can view own profile." on profiles
+  for select using (auth.uid() = id);
 
-create policy "Admins can update all profiles." on profiles
-  for update using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid() and role = 'admin'
-    )
+-- Function to check if a user is an admin without recursion
+-- Security definer bypasses RLS
+create or replace function public.is_admin()
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
   );
+end;
+$$ language plpgsql security definer;
 
 create policy "Admins can view all profiles." on profiles
-  for select using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  for select using (public.is_admin());
+
+create policy "Admins can update all profiles." on profiles
+  for update using (public.is_admin());
 
 -- Function to handle new user signups
 create or replace function public.handle_new_user()
@@ -96,17 +98,7 @@ create policy "Users can update own projects." on projects
   for update using (auth.uid() = user_id);
 
 create policy "Admins can view all projects." on projects
-  for select using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  for select using (public.is_admin());
 
 create policy "Admins can update all projects." on projects
-  for update using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid() and role = 'admin'
-    )
-  );
+  for update using (public.is_admin());

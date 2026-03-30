@@ -468,3 +468,28 @@ The autonomous agent was failing in the Daytona sandbox due to several infrastru
 - `npm install` now completes successfully without being killed.
 - The agent has a more stable environment with common diagnostic tools pre-installed.
 - Reduced agent "struggle" by providing clear structural guidance on how to initialize a New Project.
+
+## 2026-03-30 - Detailed Agent Observability & Console Enhancements
+
+### Problem
+The "Agent Console Logs" in the UI were too brief, only showing generic information like "Agent turn 15". This made it difficult for users to understand what the AI was actually thinking (Chain of Thought), which specific tools it was calling, and what the results were. It also lacked usage statistics (tokens) per turn, making it hard to audit model costs.
+
+### Decision
+- **In-Worker Logging**:
+    - Updated the generation worker script in `app/api/generate-daytona/route.ts` to log the AI's `content` (thoughts) using a `[Thought]` prefix.
+    - Added explicit logging for every tool call with its arguments using a `[Tool Call]` prefix.
+    - Added logging for tool results (truncated to 500 chars) using a `[Tool Result]` prefix.
+    - Integrated turn-by-turn usage statistics (prompt vs. completion tokens) using a `[Usage]` prefix.
+    - Added distinct separators and timestamps (e.g., `[15:02:10] === Turn 15 ===`) to the worker's stdout to improve log readability.
+- **UI Styling**:
+    - Updated `app/generate/page.tsx` to recognize these new prefixes and apply distinct CSS colors:
+        - **Thoughts**: Italicized Amber (soft, distinct from actions).
+        - **Tool Calls**: Purple (indicates active operations).
+        - **Tool Results**: Green (indicates successful completion).
+        - **Usage**: Small slate-colored text (secondary metadata).
+- **Escaping Fixes**: Switched from template literal interpolation (`${}`) to standard string concatenation within the worker script template to avoid build-time interpolation errors in Next.js.
+
+### Impact
+- Users now have "full-stack" visibility into the agent's autonomous process.
+- Debugging failed generations is significantly faster as the exact point of tool failure or AI hallucination is now visible in the UI.
+- Improved trust by showing the AI's "thought process" alongside its actions.
