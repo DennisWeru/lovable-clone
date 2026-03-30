@@ -14,7 +14,7 @@ export async function GET() {
       nodeVersion: process.version,
       env: {
         hasDaytonaKey: !!process.env.DAYTONA_API_KEY,
-        hasGeminiKey: !!process.env.GEMINI_API_KEY,
+        hasOpenRouterKey: !!process.env.OPENROUTER_API_KEY,
         hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
         hasSupabaseRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const userId = authData.user.id;
     const supabaseAdmin = createAdminClient();
 
-    if (!process.env.DAYTONA_API_KEY || !process.env.GEMINI_API_KEY) {
+    if (!process.env.DAYTONA_API_KEY || !process.env.OPENROUTER_API_KEY) {
       console.error("[API] Missing API Keys");
       return NextResponse.json({ error: "Server Configuration Error: API Keys missing" }, { status: 500 });
     }
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
         .insert({
           name: prompt.split(" ").slice(0, 5).join(" "),
           prompt: prompt,
-          model: model || "gemini-1.5-flash",
+          model: model || "moonshotai/kimi-k2.5",
           user_id: userId,
           webhook_token: webhookToken,
           status: "pending"
@@ -171,8 +171,8 @@ async function main() {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
     }
 
-    // Install core dependencies
-    const deps = ["@google/generative-ai", "playwright-core"];
+    // Install core dependencies (Reduced weight: removed gen-ai)
+    const deps = ["playwright-core"];
     for (const dep of deps) {
       if (!fs.existsSync("./node_modules/" + dep)) {
         console.log("[Worker] Installing " + dep + "...");
@@ -197,14 +197,15 @@ async function main() {
 }
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
-const MODEL = process.env.GENERATION_MODEL || "gemini-1.5-flash";
+const MODEL = process.env.GENERATION_MODEL || "anthropic/claude-3.5-sonnet:beta";
 const PROJECT_ID = process.env.PROJECT_ID || "";
 const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const CONTEXT7_API_KEY = process.env.CONTEXT7_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
 const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
+const SITE_URL = process.env.SITE_URL || "https://lovable-clone.vercel.app";
 
 async function sendUpdate(type, data) {
   if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
@@ -288,36 +289,54 @@ const tools = {
   }
 };
 
-const functionDeclarations = [
+const toolsList = [
   {
-    name: "list_files",
-    description: "List files in a directory of the project.",
-    parameters: { type: "OBJECT", properties: { directory: { type: "STRING" } } }
+    type: "function",
+    function: {
+      name: "list_files",
+      description: "List files in a directory of the project.",
+      parameters: { type: "object", properties: { directory: { type: "string" } } }
+    }
   },
   {
-    name: "read_file",
-    description: "Read the content of a file.",
-    parameters: { type: "OBJECT", properties: { path: { type: "STRING" } }, required: ["path"] }
+    type: "function",
+    function: {
+      name: "read_file",
+      description: "Read the content of a file.",
+      parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }
+    }
   },
   {
-    name: "write_file",
-    description: "Write content to a file. Use this to create or update project files.",
-    parameters: { type: "OBJECT", properties: { path: { type: "STRING" }, content: { type: "STRING" } }, required: ["path", "content"] }
+    type: "function",
+    function: {
+      name: "write_file",
+      description: "Write content to a file. Use this to create or update project files.",
+      parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }
+    }
   },
   {
-    name: "run_command",
-    description: "Execute a shell command (e.g., npm install, npm test, lint).",
-    parameters: { type: "OBJECT", properties: { command: { type: "STRING" } }, required: ["command"] }
+    type: "function",
+    function: {
+      name: "run_command",
+      description: "Execute a shell command (e.g., npm install, npm test, lint).",
+      parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] }
+    }
   },
   {
-    name: "search_docs",
-    description: "Get documentation for a library from Context7.",
-    parameters: { type: "OBJECT", properties: { vendor: { type: "STRING" }, project: { type: "STRING" } }, required: ["vendor", "project"] }
+    type: "function",
+    function: {
+      name: "search_docs",
+      description: "Get documentation for a library from Context7.",
+      parameters: { type: "object", properties: { vendor: { type: "string" }, project: { type: "string" } }, required: ["vendor", "project"] }
+    }
   },
   {
-    name: "take_screenshot",
-    description: "Take a screenshot of the website running at http://localhost:3000 to verify visual correctness.",
-    parameters: { type: "OBJECT", properties: {} }
+    type: "function",
+    function: {
+      name: "take_screenshot",
+      description: "Take a screenshot of the website running at http://localhost:3000 to verify visual correctness.",
+      parameters: { type: "object", properties: {} }
+    }
   }
 ];
 
@@ -325,52 +344,90 @@ async function runAgent() {
   console.log("[Worker] runAgent() starting...");
   await sendUpdate("progress", { message: "Agent active with tools..." });
 
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  const aiModel = genAI.getGenerativeModel({ 
-    model: MODEL,
-    tools: [{ functionDeclarations }]
-  });
-
-  const chat = aiModel.startChat();
   const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. When finished, summarize your work.";
   
-  let response = await retryable(() => chat.sendMessage(systemMessage + "\n\nUser Request: " + PROMPT));
-  
+  let messages = [
+    { role: "system", content: systemMessage },
+    { role: "user", content: "User Request: " + PROMPT }
+  ];
+
   let turns = 0;
-  const maxTurns = 15;
+  const maxTurns = 25;
 
   while (turns < maxTurns) {
-    const calls = response.response.functionCalls();
-    if (!calls || calls.length === 0) break;
-    
     turns++;
-    console.log("[Worker] Turn " + turns + ", processing " + calls.length + " tool calls.");
-    
-    const toolResults = [];
-    for (const call of calls) {
-      const handler = tools[call.name];
-      if (handler) {
-        try {
-          const result = await handler(call.args);
-          toolResults.push({ functionResponse: { name: call.name, response: result } });
-        } catch (e) {
-          toolResults.push({ functionResponse: { name: call.name, response: { error: e.message } } });
-        }
-      } else {
-        toolResults.push({ functionResponse: { name: call.name, response: { error: "Unknown tool" } } });
+    console.log("[Worker] Agent turn:", turns);
+
+    const response = await retryable(async () => {
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + OPENROUTER_API_KEY,
+          "HTTP-Referer": SITE_URL,
+          "X-Title": "Lovable Clone"
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: messages,
+          tools: toolsList,
+          tool_choice: "auto"
+        })
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        const err = new Error("OpenRouter API Error: " + resp.status + " " + txt);
+        (err as any).status = resp.status;
+        throw err;
       }
+      return await resp.json();
+    });
+
+    const choice = response.choices[0];
+    const message = choice.message;
+    messages.push(message);
+
+    if (choice.finish_reason === "stop" || !message.tool_calls) {
+      console.log("[Worker] Agent finished.");
+      await sendUpdate("complete", { 
+        message: message.content || "Project build complete!", 
+        metadata: { 
+          sandboxId: SANDBOX_ID, 
+          previewUrl: PREVIEW_URL,
+          genId: response.id,
+          usage: response.usage
+        } 
+      });
+      return;
     }
 
-    response = await retryable(() => chat.sendMessage(toolResults));
+    console.log("[Worker] Processing tool calls:", message.tool_calls.length);
+    for (const toolCall of message.tool_calls) {
+      const { name, arguments: argsString } = toolCall.function;
+      const args = JSON.parse(argsString);
+      const handler = tools[name];
+      
+      let result;
+      if (handler) {
+        try {
+          result = await handler(args);
+        } catch (e) { result = { error: e.message }; }
+      } else {
+        result = { error: "Unknown tool" };
+      }
+
+      messages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        name: name,
+        content: JSON.stringify(result)
+      });
+    }
   }
 
-  const finalMessage = response.response.text();
-  console.log("[Worker] Agent finished.");
-  await sendUpdate("complete", { 
-    message: finalMessage || "Project build complete!", 
-    metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL } 
-  });
+  console.warn("[Worker] Max turns reached.");
+  await sendUpdate("error", { message: "Maximum agent turns reached." });
 }
 
 main();
@@ -409,14 +466,15 @@ try {
 // Write env vars to a file since SessionExecuteRequest doesn't support env
 const envFileContent = Object.entries({
   GENERATION_PROMPT: prompt,
-  GENERATION_MODEL: model || "gemini-1.5-flash",
+  GENERATION_MODEL: model || "moonshotai/kimi-k2.5",
   PROJECT_ID: projectRecord.id,
   WEBHOOK_TOKEN: webhookToken,
   WEBHOOK_URL: webhookUrl,
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
   CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || "",
   SANDBOX_ID: sandboxId,
   PREVIEW_URL: previewUrl,
+  SITE_URL: `${protocol}://${host}`
 }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
 console.log("[API] Uploading .env file...");

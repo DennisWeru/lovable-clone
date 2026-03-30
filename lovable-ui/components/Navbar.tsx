@@ -7,25 +7,62 @@ import { useRouter } from "next/navigation";
 
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
   useEffect(() => {
-    const getUser = async () => {
+    const getUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("credits")
+          .eq("id", user.id)
+          .single();
+        if (profile) setCredits(profile.credits);
+      }
     };
 
-    getUser();
+    getUserData();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
+        if (session?.user) {
+          supabase
+            .from("profiles")
+            .select("credits")
+            .eq("id", session.user.id)
+            .single()
+            .then(({ data }) => {
+              if (data) setCredits(data.credits);
+            });
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    // Listen for realtime updates to credits
+    const channel = supabase
+      .channel("profile-credits")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        (payload) => {
+          if (user && payload.new.id === user.id) {
+            setCredits(payload.new.credits);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -62,9 +99,30 @@ export default function Navbar() {
       </div>
 
       {/* Auth buttons */}
-      <div className="flex items-center gap-4 text-sm">
+      <div className="flex items-center gap-6 text-sm">
         {user ? (
           <>
+            {credits !== null && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 border border-gray-800 rounded-full text-xs font-medium text-blue-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-blue-500"
+                >
+                  <circle cx="12" cy="12" r="8" />
+                  <line x1="12" y1="8" x2="12" y2="16" />
+                  <line x1="8" y1="12" x2="16" y2="12" />
+                </svg>
+                {credits.toLocaleString()} Credits
+              </div>
+            )}
             <a
               href="/dashboard"
               className="text-gray-300 hover:text-white transition-colors"

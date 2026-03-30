@@ -256,3 +256,51 @@ By moving to a tool-calling architecture, the agent can self-correct by "seeing"
 ### Prerequisites
 - `CONTEXT7_API_KEY` must be configured in the server environment.
 - The sandbox image must support basic browser dependencies (standard in most node:20 images).
+- The fundamental pipeline (install → load env → call AI → parse JSON → write files → send webhook) should actually execute for the first time.
+
+## 2026-03-29 - Real-time Agent Visibility
+
+### Problem
+Agent-driven development was "silent" during long-running tasks like dependency installation or multi-turn tool calling, leading users to believe the app was stuck.
+
+### Decision
+- **Unified Log API**: Fixed `/api/daytona-logs` to return standardized JSON.
+- **Frontend Polling**: Added a 3-second polling mechanism in `app/generate/page.tsx` that fetches logs while `isGenerating` is true.
+- **Agent Console UI**: Added an integrated "Agent Console Logs" drawer with a toggle button and color-coded output.
+- **Auto-Discovery**: The console now auto-opens on generation start so users can verify the worker is bootstrapping.
+
+## 2026-03-29 - Quota-Aware Background Resiliency
+
+### Problem
+The background worker would crash immediately on Gemini API `429` (Quota Exceeded) errors, which are common on the free tier.
+
+### Decision
+- **Retry Strategy**: Implemented a `retryable` higher-order function in the worker template that detects `429` errors and waits 45 seconds before retrying (up to 3 times).
+- **Progress Signaling**: The worker now sends a specific "⚠️ Quota exceeded. Retrying in 45s..." progress message to the UI during wait periods.
+- **Fatal Error Reporting**: Added a `try-catch` to the worker's `main` entry point that sends a final `type=error` webhook to Supabase before the process exits, ensuring the UI "Retry" button appears.
+- **UI Error Mapping**: Added a specific `QUOTA_EXCEEDED` case to the frontend error handler to provide clear instructions to the user.
+
+### Impact
+- Significant reduction in "silent hangs" due to rate limits.
+- Improved user confidence via real-time feedback during network or API stalls.
+
+## 2026-03-30 - Transitioning to OpenRouter & Dynamic Billing
+
+### Problem
+The application relied exclusively on the Gemini SDK, limiting model choice and making it difficult to implement granular, per-request billing for diverse models with varying costs.
+
+### Decision
+- **OpenRouter Integration**: Replaced the `@google/generative-ai` SDK with a lightweight, OpenAI-compatible `fetch` implementation. This allows the application to use any model supported by OpenRouter (e.g., Claude 3.5 Sonnet, Llama 3).
+- **Dynamic Per-Request Billing**:
+    - **Credit Exchange Rate**: Fixed at **1 Credit = $0.0001 USD** ($1.00 = 10,000 credits).
+    - **Usage Capture**: The generation worker now captures the OpenRouter `id` (`gen-xxxx`) and `usage` (token counts) for every request and sends them in the `complete` webhook metadata.
+    - **Asynchronous Verification**: The webhook handler now waits 2 seconds after a project completes before querying the OpenRouter `/api/v1/generation?id=...` endpoint to retrieve the *exact* finalized cost.
+    - **Atomic Deductions**: Implemented the `decrement_credits(user_id, amount)` Postgres function (RPC) to ensure credit deductions are atomic and prevent race conditions.
+- **UI/UX Visibility**:
+    - **Live Balance**: Added a real-time credit balance badge to the `Navbar`, subscribing to Supabase changes for instant feedback.
+    - **Project Costs**: Added a "Credits Used" display to each project card on the dashboard.
+- **New User Award**: Increased the signup bonus from 1,000 to **20,000 credits** ($2.00) to ensure a high-quality initial experience.
+
+### Impact
+- **Sustainable Premium Experience**: New users have enough credits for a full iterative generation using moonshotai/kimi-k2.5 , improving first-impression retention.
+- **Accurate Billing**: Every request is now billed down to the ten-thousandth of a dollar ($0.0001), protecting the platform's margins.

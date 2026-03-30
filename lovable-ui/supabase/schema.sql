@@ -3,7 +3,7 @@ create table public.profiles (
   id uuid references auth.users on delete cascade not null primary key,
   email text not null,
   role text not null default 'user'::text,
-  credits integer not null default 1000,
+  credits integer not null default 20000,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -35,7 +35,7 @@ create or replace function public.handle_new_user()
 returns trigger as $$
 begin
   insert into public.profiles (id, email, role, credits)
-  values (new.id, new.email, 'user', 1000);
+  values (new.id, new.email, 'user', 20000);
   return new;
 end;
 $$ language plpgsql security definer;
@@ -78,6 +78,7 @@ create table public.projects (
   preview_url text,
   model text not null,
   status text not null default 'pending',
+  credits_used integer default 0,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

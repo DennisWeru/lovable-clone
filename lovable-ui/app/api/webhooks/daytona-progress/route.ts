@@ -49,14 +49,70 @@ export async function POST(req: NextRequest) {
     // 3. Update project status and preview_url if needed
     if (type === "complete") {
       console.log("[Webhook] Completing project:", projectId);
-      await supabase
+      
+      // Update basic project info
+      const { data: updatedProject, error: updateError } = await supabase
         .from("projects")
         .update({
           status: "completed",
           preview_url: metadata?.previewUrl || null,
           sandbox_id: metadata?.sandboxId || null
         })
-        .eq("id", projectId);
+        .eq("id", projectId)
+        .select("user_id")
+        .single();
+      
+      if (updateError) console.error("[Webhook] Project update error:", updateError);
+
+      // --- DYNAMIC BILLING LOGIC ---
+      if (metadata?.genId && updatedProject?.user_id) {
+        try {
+          console.log(`[Billing] Starting billing for ${metadata.genId} (User: ${updatedProject.user_id})`);
+          
+          // Wait for OpenRouter to finalize internal billing stats
+          await new Promise(r => setTimeout(r, 2000));
+          
+          const openRouterKey = process.env.OPENROUTER_API_KEY;
+          const resp = await fetch(`https://openrouter.ai/api/v1/generation?id=${metadata.genId}`, {
+            headers: { "Authorization": `Bearer ${openRouterKey}` }
+          });
+          
+          if (resp.ok) {
+            const billData = await resp.json();
+            const rawCost = billData.data?.native_tokens_prompt_total_cost || billData.data?.total_cost || 0;
+            
+            // 1 Credit = $0.0001 USD
+            // OpenRouter 'total_cost' is usually in USD.
+            const costInCredits = Math.ceil(Number(rawCost) * 10000);
+            
+            console.log(`[Billing] Generation ${metadata.genId} cost $${rawCost} -> ${costInCredits} credits`);
+            
+            if (costInCredits > 0) {
+              // 1. Save to project
+              await supabase
+                .from("projects")
+                .update({ credits_used: costInCredits })
+                .eq("id", projectId);
+
+              // 2. Deduct from profile using atomic RPC
+              const { data: success, error: rpcError } = await supabase.rpc("decrement_credits", {
+                user_id: updatedProject.user_id,
+                amount: costInCredits
+              });
+              
+              if (rpcError || !success) {
+                console.error(`[Billing] Credit deduction failed for user ${updatedProject.user_id}:`, rpcError);
+              } else {
+                console.log(`[Billing] Deducted ${costInCredits} credits from user ${updatedProject.user_id}`);
+              }
+            }
+          } else {
+            console.error(`[Billing] Failed to fetch cost from OpenRouter: ${resp.status}`);
+          }
+        } catch (billingErr) {
+          console.error("[Webhook] Billing failure:", billingErr);
+        }
+      }
     } else if (type === "error") {
       console.error("[Webhook] Project error:", projectId, finalContent);
       await supabase

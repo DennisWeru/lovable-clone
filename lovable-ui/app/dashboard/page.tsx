@@ -116,7 +116,14 @@ export default async function DashboardPage() {
                     <h3 className="text-sm font-medium text-white mb-2 line-clamp-2" title={project.prompt}>
                       "{project.prompt}"
                     </h3>
-                    <p className="text-xs text-gray-500">Model: {project.model}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-500">Model: {project.model}</p>
+                      {project.credits_used > 0 && (
+                        <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                          {project.credits_used.toLocaleString()} Credits Used
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="border-t border-gray-800 p-4 bg-gray-900/50 flex gap-3">
