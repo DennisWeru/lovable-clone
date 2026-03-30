@@ -110,8 +110,8 @@ export async function POST(req: NextRequest) {
     try {
       if (sandboxId) {
         console.log("[API] Finding sandbox:", sandboxId);
-        const sandboxes = await daytona.list();
-        sandbox = sandboxes.find((s: any) => s.id === sandboxId);
+        const result = await daytona.list();
+        sandbox = result.items.find((s: any) => s.id === sandboxId);
       }
 
       if (!sandbox) {

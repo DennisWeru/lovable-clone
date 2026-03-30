@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
     const daytona = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
     
     // Find the sandbox
-    const sandboxes = await daytona.list();
-    const sandbox = sandboxes.find((s: any) => s.id === sandboxId);
+    const result = await daytona.list();
+    const sandbox = result.items.find((s: any) => s.id === sandboxId);
     
     if (!sandbox) {
       return NextResponse.json({ error: "Sandbox not found" }, { status: 404 });

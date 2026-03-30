@@ -56,8 +56,8 @@ export async function generateWebsiteInDaytona({
     // Step 1: Create or get sandbox
     if (sandboxId) {
       onProgress(`1. Using existing sandbox: ${sandboxId}`);
-      const sandboxes = await daytona.list();
-      sandbox = sandboxes.find((s: any) => s.id === sandboxId);
+      const result = await daytona.list();
+      sandbox = result.items.find((s: any) => s.id === sandboxId);
       if (!sandbox) {
         onError('SANDBOX_NOT_FOUND', `Sandbox ${sandboxId} not found`);
         throw new Error(`Sandbox ${sandboxId} not found`);
