@@ -264,17 +264,20 @@ if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 // TOOL IMPLEMENTATIONS
 const tools = {
   list_files: async ({ directory = "." }) => {
+    if (typeof directory === "string") directory = directory.replace(/^:/, "");
     const target = path.join(projectDir, directory);
     if (!fs.existsSync(target)) return { error: "Directory not found" };
     const items = fs.readdirSync(target, { withFileTypes: true });
     return { files: items.map(i => ({ name: i.name, type: i.isDirectory() ? "dir" : "file" })) };
   },
   read_file: async ({ path: filePath }) => {
+    if (typeof filePath === "string") filePath = filePath.replace(/^:/, "");
     const target = path.join(projectDir, filePath);
     if (!fs.existsSync(target)) return { error: "File not found" };
     return { content: fs.readFileSync(target, "utf-8") };
   },
   write_file: async ({ path: filePath, content }) => {
+    if (typeof filePath === "string") filePath = filePath.replace(/^:/, "");
     const target = path.join(projectDir, filePath);
     const dir = path.dirname(target);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -283,6 +286,7 @@ const tools = {
     return { success: true };
   },
   run_command: async ({ command }) => {
+    if (typeof command === "string") command = command.replace(/^:/, "");
     console.log("[Tool] Running command:", command);
     await sendUpdate("tool_use", { name: "run_command", input: { command } });
     try {
@@ -418,7 +422,7 @@ async function runAgent() {
   await sendUpdate("progress", { message: "Agent active..." });
 
   const isResuming = INITIAL_HISTORY.length > 0;
-  const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. WORKFLOW: 1. Research/Plan (read_file, list_files, search_docs). 2. Write code (write_file). 3. Setup (run_command: npm install). 4. Launch (run_command: npm run dev &). 5. Verify (is_port_in_use, take_screenshot). ALWAYS install dependencies before trying to start the server. For npm install, use 'npm install --no-audit --no-fund' to save memory. You can also use 'pnpm install' which is pre-installed and faster. Port checking must be done via 'is_port_in_use'. Use report_progress frequently. When finished, summarize your work.";
+  const systemMessage = "You are a Senior Developer Agent. Build a complete website. PREFERENCE: By default, use React, Vite, and Tailwind CSS unless the user specifies otherwise. DESIGN: Aim for premium, modern aesthetics (vibrant colors, sleek dark modes, glassmorphism, smooth animations). WORKFLOW: 1. Research/Plan. 2. Initialize Project: If not present, initialize React+Vite in the current directory using 'npm create vite@latest . -- --template react -- --yes'. 3. Setup Tailwind: Install tailwindcss, postcss, autoprefixer and configure them. 4. Write code (write_file). 5. Dependencies: run 'npm install --no-audit --no-fund'. 6. Launch: 'npm run dev &'. 7. Verify: Use 'is_port_in_use' and 'take_screenshot'. STRICT RULES: 1. NEVER use a leading colon (:) in shell commands. Use 'ls', not ':ls'. 2. ALWAYS install dependencies before starting the server. 3. Use report_progress frequently. When finished, summarize your work.";
   
   let messages = [];
   if (isResuming) {
