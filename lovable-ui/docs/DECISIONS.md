@@ -512,3 +512,18 @@ The user reported that credits were not being deducted during generation.
 - Credits are now deducted immediately upon completion of an AI turn.
 - Webhook latency reduced from ~14s to <1s for большинство paid generations.
 - Fixed structural inconsistency between code and database.
+
+## 2026-03-30 - Default Model Change to GPT-5.3-Codex
+
+### Problem
+The user requested to change the default model from Kimi to `openai/gpt-5.3-codex`.
+
+### Decision
+1.  **Backend Defaults**: Updated `app/api/generate-daytona/route.ts` to use `openai/gpt-5.3-codex` as the fallback model for both project creation and the generation worker environment.
+2.  **Frontend State**: Updated `app/page.tsx` (the landing page) to initialize the model selection state with `openai/gpt-5.3-codex`.
+3.  **UI Options**: Updated the dropdown menu on the homepage to list "GPT-5.3-Codex" as the default option.
+4.  **Generation Page Fallback**: Updated `app/generate/page.tsx` to default to `openai/gpt-5.3-codex` if no model is specified in the URL parameters.
+
+### Impact
+- All new generations will now default to `openai/gpt-5.3-codex` unless the user explicitly selects a different model.
+- Consistent default behavior across the landing page, generation workflow, and background worker.

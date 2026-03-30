@@ -25,7 +25,7 @@ function GenerateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const prompt = searchParams.get("prompt") || "";
-  const model = searchParams.get("model") || "moonshotai/kimi-k2.5";
+  const model = searchParams.get("model") || "openai/gpt-5.3-codex";
   const initialSandboxId = searchParams.get("sandboxId");
   const initialPreviewUrl = searchParams.get("previewUrl");
   const projectId = searchParams.get("projectId");
