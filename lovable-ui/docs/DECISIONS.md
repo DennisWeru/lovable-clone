@@ -450,3 +450,21 @@ Agent-driven website generation is resource-intensive and often involves sending
 - **Cost Efficiency**: Long conversation histories are now billed at cached token rates (up to 90% cheaper on supported models).
 - **Improved Observability**: Developers can now view all generations for a single project ID as a cohesive group in OpenRouter/Observability activity feeds.
 
+## 2026-03-30 - Resolving Agent Bootstrap and Performance Bottlenecks
+
+### Problem
+The autonomous agent was failing in the Daytona sandbox due to several infrastructure-level issues:
+1. **OOM (Out Of Memory)**: `npm install` for Next.js projects was being "Killed" by the OS due to the default 1GB RAM limit.
+2. **Missing Dependencies**: The agent (LLM) frequently tried to use `lsof` to check port status, which was missing from the container image.
+3. **Execution Order**: The agent was attempting to run `npm start` before `npm install`, causing "next not found" errors.
+
+### Decision
+- **Increased Resources**: Updated the sandbox creation request to allocate **2 vCPU and 4GB RAM** (up from the default 1 vCPU / 1GB RAM). This provides enough headroom for memory-intensive operations like `npm install`.
+- **System Bootstrap**: Modified the worker's bootstrap phase to automatically install `lsof`, `net-tools`, and `pnpm` via `sudo apt-get` and `npm -g`. `pnpm` is recommended for even faster/leaner dependency management.
+- **Dedicated Port Tool**: Added a native `is_port_in_use` tool to the worker's toolbox. This provides a robust way for the agent to check server status without writing fragile shell scripts or relying solely on `lsof`.
+- **Workflow Guidance**: Updated the **Senior Developer System Prompt** to explicitly outline a 5-step workflow (Research -> Write -> Setup -> Launch -> Verify). It now specifically instructs the agent to install dependencies before starting the server and recommends memory-efficient flags.
+
+### Impact
+- `npm install` now completes successfully without being killed.
+- The agent has a more stable environment with common diagnostic tools pre-installed.
+- Reduced agent "struggle" by providing clear structural guidance on how to initialize a New Project.

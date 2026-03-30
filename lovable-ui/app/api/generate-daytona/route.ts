@@ -143,10 +143,11 @@ export async function POST(req: NextRequest) {
       }
 
       if (!sandbox) {
-        console.log("[API] Creating sandbox...");
+        console.log("[API] Creating sandbox (2 CPU / 4GB RAM)...");
         sandbox = await daytona.create({
           public: true,
-          image: "mcr.microsoft.com/playwright:v1.45.0-jammy"
+          image: "mcr.microsoft.com/playwright:v1.45.0-jammy",
+          resources: { cpu: 2, memory: 4 }
         });
         sandboxId = sandbox.id;
         console.log("[API] Sandbox created:", sandboxId);
@@ -197,6 +198,15 @@ async function main() {
     console.log("[Worker] Bootstrapping environment...");
     if (!fs.existsSync("package.json")) {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
+    }
+
+    // Install system dependencies (Non-blocking)
+    try {
+      console.log("[Worker] Installing system dependencies (lsof, pnpm)...");
+      execSync("sudo apt-get update && sudo apt-get install -y lsof net-tools", { stdio: "inherit", timeout: 120000 });
+      execSync("sudo npm install -g pnpm", { stdio: "inherit", timeout: 60000 });
+    } catch (e) {
+      console.warn("[Worker] System bootstrap failed:", e.message);
     }
 
     // Install core dependencies (Reduced weight: removed gen-ai)
@@ -320,6 +330,19 @@ const tools = {
     console.log("[Tool] Progress update:", message);
     await sendUpdate("progress", { message });
     return { success: true };
+  },
+  is_port_in_use: async ({ port = 3000 }) => {
+    console.log("[Tool] Checking port:", port);
+    try {
+      // Use lsof if available, fallback to netstat
+      try {
+        const out = execSync("lsof -i :" + port + " -t", { encoding: "utf8" }).trim();
+        return { port, inUse: out.length > 0, pid: out || null };
+      } catch (e) {
+        // lsof returns 1 if not found
+        return { port, inUse: false };
+      }
+    } catch (err) { return { error: err.message }; }
   }
 };
 
@@ -379,6 +402,14 @@ const toolsList = [
       description: "Report a high-level progress message to the user (e.g., 'Drafting the navigation menu...', 'Researching library options...'). Use this to keep the user updated during complex tasks.",
       parameters: { type: "object", properties: { message: { type: "string" } }, required: ["message"] }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "is_port_in_use",
+      description: "Check if a specific port is already being used by a process.",
+      parameters: { type: "object", properties: { port: { type: "number" } } }
+    }
   }
 ];
 
@@ -387,7 +418,7 @@ async function runAgent() {
   await sendUpdate("progress", { message: "Agent active..." });
 
   const isResuming = INITIAL_HISTORY.length > 0;
-  const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. ALWAYS check existing files and search for docs if you use a new library. If you run a server, use take_screenshot to verify it. Use report_progress frequently to tell the user what high-level task you are working on. When finished, summarize your work.";
+  const systemMessage = "You are a Senior Developer Agent. Build a complete website. You have direct access to the sandbox tools. WORKFLOW: 1. Research/Plan (read_file, list_files, search_docs). 2. Write code (write_file). 3. Setup (run_command: npm install). 4. Launch (run_command: npm run dev &). 5. Verify (is_port_in_use, take_screenshot). ALWAYS install dependencies before trying to start the server. For npm install, use 'npm install --no-audit --no-fund' to save memory. You can also use 'pnpm install' which is pre-installed and faster. Port checking must be done via 'is_port_in_use'. Use report_progress frequently. When finished, summarize your work.";
   
   let messages = [];
   if (isResuming) {
