@@ -441,7 +441,7 @@ async function runAgent() {
 
   while (turns < maxTurns) {
     turns++;
-    console.log("[Worker] Agent turn:", turns);
+    console.log("\n[" + new Date().toLocaleTimeString() + "] === Turn " + turns + " ===");
     if (turns > 1 || isResuming) await sendUpdate("progress", { message: "Thinking about next steps..." });
 
     const response = await retryable(async () => {
@@ -477,6 +477,15 @@ async function runAgent() {
     const message = choice.message;
     messages.push(message);
 
+    // LOG THOUGHTS
+    if (message.content) {
+      console.log("[Thought]:", message.content);
+    }
+
+    if (response.usage) {
+      console.log("[Usage]: " + response.usage.prompt_tokens + " prompt + " + response.usage.completion_tokens + " completion tokens");
+    }
+
     // PERSIST ASSISTANT MESSAGE
     await sendUpdate("claude_message", { 
       content: message.content || "", 
@@ -489,6 +498,7 @@ async function runAgent() {
 
     if (choice.finish_reason === "stop" || !message.tool_calls) {
       console.log("[Worker] Agent finished.");
+      console.log("--------------------------");
       await sendUpdate("complete", { 
         message: message.content || "Project build complete!", 
         metadata: { 
@@ -505,6 +515,7 @@ async function runAgent() {
     for (const toolCall of message.tool_calls) {
       const { name, arguments: argsString } = toolCall.function;
       const args = JSON.parse(argsString);
+      console.log("[Tool Call]:", name + "(" + JSON.stringify(args) + ")");
       const handler = tools[name];
       
       let result;
@@ -515,6 +526,8 @@ async function runAgent() {
       } else {
         result = { error: "Unknown tool" };
       }
+
+      console.log("[Tool Result]:", JSON.stringify(result).slice(0, 500) + (JSON.stringify(result).length > 500 ? "..." : ""));
 
       const toolMsg = {
         role: "tool",

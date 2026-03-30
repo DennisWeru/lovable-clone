@@ -746,7 +746,15 @@ function GenerateContent() {
               <div className="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-gray-300 space-y-1">
                 {logs ? (
                   logs.split('\n').map((line, i) => (
-                    <div key={i} className={`break-words ${line.includes('[Worker]') ? 'text-blue-300' : line.includes('[Tool]') ? 'text-purple-400' : line.includes('error') || line.includes('Fatal') ? 'text-red-400' : 'text-gray-400'}`}>
+                    <div key={i} className={`break-words ${
+                      line.includes('[Worker]') ? 'text-blue-300' : 
+                      line.includes('[Tool Call]') ? 'text-purple-300' : 
+                      line.includes('[Tool Result]') ? 'text-green-400/80' : 
+                      line.includes('[Thought]') ? 'text-amber-200/90 italic' : 
+                      line.includes('[Usage]') ? 'text-slate-500 text-[10px]' : 
+                      line.includes('error') || line.includes('Fatal') ? 'text-red-400 font-bold' : 
+                      'text-gray-400'
+                    }`}>
                       {line}
                     </div>
                   ))
