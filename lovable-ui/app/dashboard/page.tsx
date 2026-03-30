@@ -69,7 +69,7 @@ export default async function DashboardPage() {
               </svg>
             </div>
             <h3 className="text-lg font-medium text-gray-300 mb-2">No projects yet</h3>
-            <p className="text-gray-500 max-w-sm mx-auto mb-6">You haven't generated any projects yet. Start by entering a prompt on the home page.</p>
+            <p className="text-gray-500 max-w-sm mx-auto mb-6">You haven&apos;t generated any projects yet. Start by entering a prompt on the home page.</p>
             <Link href="/" className="text-blue-400 hover:text-blue-300 font-medium">
               Generate your first project &rarr;
             </Link>
@@ -114,7 +114,7 @@ export default async function DashboardPage() {
                       </span>
                     </div>
                     <h3 className="text-sm font-medium text-white mb-2 line-clamp-2" title={project.prompt}>
-                      "{project.prompt}"
+                      &quot;{project.prompt}&quot;
                     </h3>
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-gray-500">Model: {project.model}</p>

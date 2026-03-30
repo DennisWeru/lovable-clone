@@ -62,7 +62,7 @@ export default function Navbar() {
       subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user, supabase]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
