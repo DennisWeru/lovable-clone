@@ -285,7 +285,8 @@ const tools = {
     } catch (e) { 
       console.error("[Tool] Screenshot failed:", e.message);
       return { error: "Could not take screenshot. Ensure the server is running on port 3000 and dependencies are met. Details: " + e.message }; 
-    },
+    }
+  },
   report_progress: async ({ message }) => {
     console.log("[Tool] Progress update:", message);
     await sendUpdate("progress", { message });

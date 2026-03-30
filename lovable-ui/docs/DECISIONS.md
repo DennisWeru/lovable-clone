@@ -385,3 +385,31 @@ The user observed that OpenRouter was using a Gemini model instead of Kimi, desp
 - Eliminates ambiguity in model routing.
 - Ensures the AI receives the correct model parameter via the `GENERATION_MODEL` environment variable in the Daytona worker.
 - Resonates with the user's "Kimi-first" setup.
+
+## 2026-03-30 - Fix: Generation Worker Syntax Error (Missing Closing Brace)
+
+### Problem
+The `generation-worker.mjs` script failed to start in the Daytona sandbox with `SyntaxError: Unexpected token ','`. The error pointed to a line containing `},`, indicating a structural issue in the code.
+
+### Diagnosis
+In `app/api/generate-daytona/route.ts`, the `workerContent` template literal had a syntax error in the `take_screenshot` tool definition. The `try/catch` block within the tool was closed, but the wrapping async function was missing its closing brace before the trailing comma:
+
+```javascript
+    } catch (e) { 
+      ...
+      return { ... }; 
+    }, // <--- Missing one '}' here!
+  report_progress: ...
+```
+
+### Decision
+- Added the missing closing brace to the `take_screenshot` tool definition in the worker script template.
+- Verified that all other tools (`run_command`, `search_docs`, etc.) have correctly balanced braces.
+
+### Impact
+- The generation worker script is now syntactically valid ESM.
+- Autonomous agent generation can now proceed without crashing at startup.
+
+### Key Learning
+When generating code within a template literal, specialized attention to brace balancing is required, especially when nesting `try/catch` blocks within object properties. Explicitly using `String.raw` helped identify the issue by making the generated source more readable in the editor.
+
