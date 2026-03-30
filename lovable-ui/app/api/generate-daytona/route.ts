@@ -437,7 +437,7 @@ async function runAgent() {
   }
 
   let turns = 0;
-  const maxTurns = 25;
+  const maxTurns = 40;
 
   while (turns < maxTurns) {
     turns++;
@@ -478,7 +478,14 @@ async function runAgent() {
     messages.push(message);
 
     // PERSIST ASSISTANT MESSAGE
-    await sendUpdate("claude_message", { content: message.content || "", metadata: { tool_calls: message.tool_calls } });
+    await sendUpdate("claude_message", { 
+      content: message.content || "", 
+      metadata: { 
+        tool_calls: message.tool_calls,
+        genId: response.id,
+        usage: response.usage
+      } 
+    });
 
     if (choice.finish_reason === "stop" || !message.tool_calls) {
       console.log("[Worker] Agent finished.");
