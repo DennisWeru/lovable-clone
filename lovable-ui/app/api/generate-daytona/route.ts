@@ -466,14 +466,22 @@ if (process.env.WEBHOOK_BASE_URL) webhookUrl = `${process.env.WEBHOOK_BASE_URL}/
 
 console.log("[API] Webhook URL set to:", webhookUrl);
 
-// Get actual preview link from Daytona SDK
-console.log("[API] Getting preview link for port 3000...");
+// Get actual signed preview link from Daytona SDK (bypasses warning page in iframes)
+console.log("[API] Getting signed preview link for port 3000...");
 let previewUrl = `https://${sandboxId}.daytona.app`; // Fallback
 try {
-  const preview = await sandbox.getPreviewLink(3000);
-  previewUrl = preview.url;
-} catch (e) {
-  console.warn("[API] Could not get preview link via SDK, using fallback");
+  // 3600 seconds = 1 hour expiry
+  const signedPreview = await sandbox.getSignedPreviewUrl(3000, 3600);
+  previewUrl = signedPreview.url;
+  console.log("[API] Signed preview URL obtained:", previewUrl.slice(0, 50) + "...");
+} catch (e: any) {
+  console.warn("[API] Could not get signed preview link via SDK, falling back to standard link:", e.message);
+  try {
+    const preview = await sandbox.getPreviewLink(3000);
+    previewUrl = preview.url;
+  } catch (err) {
+    console.warn("[API] Standard preview link also failed, using raw fallback");
+  }
 }
 
 // Write env vars to a file since SessionExecuteRequest doesn't support env

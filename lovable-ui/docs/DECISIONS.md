@@ -335,3 +335,29 @@ The agent was spending significant time (minutes) at the start of each generatio
 - **Instant Screenshots**: The agent no longer downloads 100MB+ of browser binaries during the generation process.
 - **Faster Bootstrap**: The worker spends less time in the "Bootstrapping environment" phase.
 - **Reduced Bandwidth/Cost**: Fewer external downloads from the sandbox environment.
+
+## 2026-03-30 - Removing Daytona Preview URL Warning
+
+### Problem
+When opening a Daytona preview URL in the application's preview window (iframe), users are greeted with a "Preview URL Warning" page. This interrupts the seamless experience and requires manual interaction ("I Understand, Continue").
+
+### Research Findings
+According to Daytona's documentation on `preview-and-authentication`:
+1. **Warning Logic**: The warning page is a security measure for browser-based access to "Standard Preview URLs".
+2. **Standard Bypasses**:
+   - **X-Daytona-Skip-Preview-Warning: true**: An HTTP header that skips the warning. Impossible to inject into a standard iframe load from the browser.
+   - **Tier 3 Upgrade**: Upgrading the Daytona organization to Tier 3 removes the warning globally.
+   - **Custom Preview Proxy**: Deploying a self-hosted proxy to inject the bypass header.
+3. **Signed Preview URLs**:
+   - These URLs embed the authentication token directly: `https://{port}-{token}.{daytonaProxyDomain}`.
+   - They are specifically designed for iframes and emails where headers cannot be set.
+   - Research suggests Signed Preview URLs bypass the manual warning page because they are considered "pre-authenticated" sessions.
+
+### Decision
+- **Short-term (Code)**: Switch from `sandbox.getPreviewLink()` to `sandbox.getSignedPreviewUrl(3000, 3600)` in the generation API. This provides a more professional, header-less URL that is better suited for the iframe preview window.
+- **Long-term (Org)**: If the project scales, the organization should be upgraded to **Tier 3** to remove the warning across all standard URLs without needing signed tokens.
+
+### Impact
+- Eliminates the manual "I Understand" click for users.
+- Improves the premium "Lovable" feel of the application.
+- Enhances security by using time-limited signed tokens instead of generic public URLs.
