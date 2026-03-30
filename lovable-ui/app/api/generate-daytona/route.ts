@@ -214,18 +214,24 @@ async function main() {
     // Install system dependencies (Non-blocking)
     try {
       console.log("[Worker] Installing system dependencies (lsof, pnpm)...");
-      execSync("sudo apt-get update && sudo apt-get install -y lsof net-tools", { stdio: "inherit", timeout: 120000 });
-      execSync("sudo npm install -g pnpm", { stdio: "inherit", timeout: 60000 });
+      const user = execSync("whoami", { encoding: "utf8" }).trim();
+      console.log("[Worker] Agent user is: " + user);
+      
+      const aptCmd = (user === "root") ? "apt-get update && apt-get install -y lsof net-tools" : "sudo apt-get update && sudo apt-get install -y lsof net-tools";
+      const pnpmCmd = (user === "root" || user === "daytona") ? "npm install -g pnpm" : "sudo npm install -g pnpm";
+      
+      try { execSync(aptCmd, { stdio: "inherit", timeout: 120000 }); } catch (e) { console.warn("[Worker] apt-get failed, continuing..."); }
+      try { execSync(pnpmCmd, { stdio: "inherit", timeout: 60000 }); } catch (e) { console.warn("[Worker] pnpm install failed, continuing..."); }
     } catch (e) {
       console.warn("[Worker] System bootstrap failed:", e.message);
     }
 
     // Install core dependencies (Reduced weight: removed gen-ai)
-    // Note: playwright is now pre-installed in the container image
-    const deps = ["playwright"]; 
+    // Note: playwright should match the container image v1.45.0 to avoid re-downloading browsers
+    const deps = ["playwright@1.45.0"]; 
     for (const dep of deps) {
-      if (!fs.existsSync("./node_modules/" + dep)) {
-        console.log("[Worker] Installing " + dep + " (if missing)...");
+      if (!fs.existsSync("./node_modules/" + dep.split("@")[0])) {
+        console.log("[Worker] Installing " + dep + " (matching container)...");
         try {
           execSync("npm install " + dep, { encoding: "utf8" });
         } catch (e) { console.error("[Worker] Install failed for " + dep + ":", e.message); }
@@ -433,7 +439,7 @@ async function runAgent() {
   await sendUpdate("progress", { message: "Agent active..." });
 
   const isResuming = INITIAL_HISTORY.length > 0;
-  const systemMessage = "You are a Senior Developer Agent. Build a complete website. PREFERENCE: By default, use React, Vite, and Tailwind CSS unless the user specifies otherwise. DESIGN: Aim for premium, modern aesthetics (vibrant colors, sleek dark modes, glassmorphism, smooth animations). WORKFLOW: 1. Research/Plan. 2. Initialize Project: If not present, initialize React+Vite in the current directory using 'npm create vite@latest . -- --template react -- --yes'. 3. Setup Tailwind: Install tailwindcss, postcss, autoprefixer and configure them. 4. Write code (write_file). 5. Dependencies: run 'npm install --no-audit --no-fund'. 6. Launch: 'npm run dev &'. 7. Verify: Use 'is_port_in_use' and 'take_screenshot'. STRICT RULES: 1. NEVER use a leading colon (:) in shell commands. Use 'ls', not ':ls'. 2. ALWAYS install dependencies before starting the server. 3. Use report_progress frequently. When finished, summarize your work.";
+  const systemMessage = "You are a Senior Developer Agent. Build a complete website. ENVIRONMENT: Node v20.15.0 is present. PREFERENCE: By default, use React, Vite, and Tailwind CSS unless the user specifies otherwise. DESIGN: Aim for premium, modern aesthetics (vibrant colors, sleek dark modes, glassmorphism, smooth animations). WORKFLOW: 1. Research/Plan. 2. Initialize Project: If not present, initialize React+Vite in the current directory using 'npm create vite@5 . -- --template react -- --yes'. 3. Setup Tailwind: Install tailwindcss, postcss, autoprefixer and configure them. 4. Write code (write_file). 5. Dependencies: run 'npm install --no-audit --no-fund'. 6. Launch: 'npm run dev &'. 7. Verify: Use 'is_port_in_use' and 'take_screenshot'. STRICT RULES: 1. LOCK VERSIONS: Use Vite 5, NOT Vite latest, to maintain Node.js compatibility. 2. PLAYWRIGHT: If you must install playwright, use 'playwright@1.45.0' to match the system image. 3. NEVER use a leading colon (:) in shell commands. Use 'ls', not ':ls'. 4. ALWAYS install dependencies before starting the server. 5. Use report_progress frequently. When finished, summarize your work.";
   
   let messages = [];
   if (isResuming) {
