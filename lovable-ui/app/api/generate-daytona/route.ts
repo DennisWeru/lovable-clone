@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Worker Payload (Claude Code CLI Bootstrap)
     // @ts-ignore
-    const workerContent = `
+    const workerContent = String.raw`
 const { execSync, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
