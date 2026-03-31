@@ -226,7 +226,7 @@ async function main() {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
     }
 
-    // 2. Install Claude Code CLI globally if not present
+      // 2. Install Claude Code CLI globally if not present (Increase timeout to 5 mins)
     try {
       console.log("[Worker] Checking for Claude CLI...");
       execSync("claude --version", { stdio: "ignore" });
@@ -234,8 +234,16 @@ async function main() {
       await sendUpdate("progress", { message: "📦 Installing @anthropic-ai/claude-code..." });
       console.log("[Worker] Installing Claude CLI globally...");
       const user = execSync("whoami", { encoding: "utf8" }).trim();
-      const npmCmd = (user === "root" || user === "daytona") ? "npm install -g @anthropic-ai/claude-code" : "sudo npm install -g @anthropic-ai/claude-code";
-      execSync(npmCmd, { stdio: "inherit", timeout: 120000 });
+      const npmCmd = (user === "root" || user === "daytona") 
+        ? "npm install -g @anthropic-ai/claude-code --no-fund --no-audit" 
+        : "sudo npm install -g @anthropic-ai/claude-code --no-fund --no-audit";
+      
+      try {
+        execSync(npmCmd, { stdio: "inherit", timeout: 300000 }); // 5 minutes
+      } catch (err) {
+        console.warn("[Worker] Global install failed or timed out, will try npx fallback", err.message);
+        await sendUpdate("progress", { message: "⚠️ Global install took too long, switching to npx... (this might be slower)" });
+      }
     }
 
     // 3. Create CLAUDE.md for project context
@@ -309,62 +317,80 @@ async function runClaude() {
     "--output-format", "text"
   ];
 
-  console.log("[Worker] Spawning: claude", args.join(" "));
-  
-  const cp = spawn("claude", args, { 
-    env, 
-    cwd: projectDir,
-    shell: true // Required for global command and npx resolution
-  });
-
-  // Track if we've seen any output to handle silence
-  let hasOutput = false;
-
-  cp.stdout.on("data", (data) => {
-    hasOutput = true;
-    const text = data.toString();
-    console.log("[Claude STDOUT]:", text);
-    // Send raw output as progress updates to the UI console
-    sendUpdate("progress", { message: text });
-  });
-
-  cp.stderr.on("data", (data) => {
-    const errText = data.toString();
-    console.warn("[Claude STDERR]:", errText);
-    if (!errText.includes("warning") && !errText.includes("Deprecation")) {
-       sendUpdate("progress", { message: "⚠️ " + errText });
-    }
-  });
-
   return new Promise((resolve, reject) => {
-    cp.on("close", (code) => {
-      if (code === 0) {
-        console.log("[Worker] Claude finished successfully.");
-        sendUpdate("complete", { 
-          message: "Project build complete! Claude has finished the task.", 
-          metadata: { 
-            sandboxId: SANDBOX_ID, 
-            previewUrl: PREVIEW_URL,
-            engine: "claude-code"
-          } 
-        });
-        resolve();
+    // Try running 'claude' directly first (assuming global install), or fall back to 'npx'
+    // Using npx --yes ensures non-interactive execution for automated workers
+    const command = "claude";
+    
+    console.log("[Worker] Spawning:", command, args.join(" "));
+    
+    const cp = spawn(command, args, { 
+      env, 
+      cwd: projectDir,
+      shell: true 
+    });
+    
+    const setupHandlers = (proc) => {
+      proc.stdout.on("data", (data) => {
+        const text = data.toString();
+        console.log("[Claude STDOUT]:", text);
+        sendUpdate("progress", { message: text });
+      });
+
+      proc.stderr.on("data", (data) => {
+        const errText = data.toString();
+        console.warn("[Claude STDERR]:", errText);
+        if (!errText.includes("warning") && !errText.includes("Deprecation")) {
+           sendUpdate("progress", { message: "⚠️ " + errText });
+        }
+      });
+
+      proc.on("close", (code) => {
+        if (code === 0) {
+          console.log("[Worker] Claude finished successfully.");
+          sendUpdate("complete", { 
+            message: "Project build complete! Claude has finished the task.", 
+            metadata: { 
+              sandboxId: SANDBOX_ID, 
+              previewUrl: PREVIEW_URL,
+              engine: "claude-code"
+            } 
+          });
+          resolve();
+        } else {
+          const errorMsg = "Claude exited with code " + code;
+          console.error("[Worker]", errorMsg);
+          reject(new Error(errorMsg));
+        }
+      });
+
+      proc.on("error", (err) => {
+        console.error("[Worker] Process error:", err);
+        reject(err);
+      });
+    };
+
+    cp.on("error", (err) => {
+      if (err.code === "ENOENT") {
+        console.warn("[Worker] 'claude' command not found, retrying with npx...");
+        const npxArgs = ["--yes", "@anthropic-ai/claude-code", ...args];
+        const npxCp = spawn("npx", npxArgs, { env, cwd: projectDir, shell: true });
+        setupHandlers(npxCp);
       } else {
-        const errorMsg = "Claude exited with code " + code;
-        console.error("[Worker]", errorMsg);
-        reject(new Error(errorMsg));
+        console.error("[Worker] Initial spawn error:", err);
+        reject(err);
       }
     });
 
-    cp.on("error", (err) => {
-      console.error("[Worker] Process error:", err);
-      reject(err);
-    });
+    if (cp.pid) {
+      setupHandlers(cp);
+    }
   });
 }
 
 main();
 `;
+
 
     // 7. Upload files and execute in Sandbox using proper SDK APIs
     // Worker MUST live in /home/daytona/ alongside node_modules (Node resolves relative to script location)

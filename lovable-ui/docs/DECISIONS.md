@@ -59,3 +59,25 @@ Replaced the custom agent loop with a bootstrap worker that leverages the **Clau
 -   **Lower Maintenance**: Eliminates the need to maintain a custom, multi-hundred-line tool-calling loop in `route.ts`.
 -   **OpenRouter Support**: Maintains the existing billing and credit deduction logic by using OpenRouter's Anthropic-compatible API skin.
 -   **Visual Feedback**: Preserves the ability to "see" the generated website through Playwright snapshots, which Claude can now trigger via standard bash commands.
+
+## Resolving Claude Code Installation Timeout (2026-03-31)
+
+### Problem
+Users encountered `spawnSync /bin/sh ETIMEDOUT` errors in production when the agent attempted to install `@anthropic-ai/claude-code` globally. The default 120s timeout was insufficient for downloading and installing the CLI and its dependencies in the Daytona sandbox environment.
+
+### Solution
+Hardened the bootstrapping process in the agent worker:
+1.  **Increased installation timeout**: Bumped the `npm install -g` timeout from 120s to **300s (5 minutes)**.
+2.  **Implemented `npx` Execution Fallback**: Modified the worker's `runClaude` function to attempt a global `claude` call first, but automatically fallback to `npx --yes @anthropic-ai/claude-code` if the global command is not found (`ENOENT`).
+3.  **Optimized npm flags**: Added `--no-fund --no-audit` to the installation command to reduce network overhead and speed up the process.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    -   Updated `npmCmd` with optimized flags and 300,000ms timeout.
+    -   Refactored `runClaude` as an asynchronous promise-based function with `npx` fallback logic.
+    -   Enhanced worker logging for both stdout and stderr to improve observability during failure.
+
+### Rationale
+-   **Resilience**: The `npx` fallback ensures that even if the global installation takes too long or fails due to ephemeral file system issues, the agent can still attempt to run by downloading it on-demand during the execution phase.
+-   **Observability**: Improved logging helps diagnose why an installation might be slow or failing in specific sandbox regions.
+-   **User Experience**: Prevents "Fatal error in main loop" crashes that were completely blocking website generation for users.

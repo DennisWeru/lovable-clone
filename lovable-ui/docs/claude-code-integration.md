@@ -37,10 +37,13 @@ It is **highly feasible** to transition the current agent logic to use Claude Co
 - [ ] **Research**
   - [ ] Test `claude -p "Prompt"` headless mode performance.
   - [ ] Identify a reliable way to capture "Thinking" state for UI progress bars.
-- [ ] **Implementation**
-  - [ ] Update `app/api/generate-daytona/route.ts` to inject the OpenRouter key as `ANTHROPIC_AUTH_TOKEN` and set `ANTHROPIC_BASE_URL`.
-  - [ ] Create a `claude-worker.sh` that initializes the project and calls Claude.
+- [x] **Implementation**
+  - [x] Update `app/api/generate-daytona/route.ts` to inject the OpenRouter key as `ANTHROPIC_AUTH_TOKEN` and set `ANTHROPIC_BASE_URL`.
+  - [x] Create a `claude-worker.sh` that initializes the project and calls Claude. (Implemented as `generation-worker.mjs` inside `route.ts`)
   - [ ] Update frontend to allow selecting "Claude Code" as an engine.
+- [ ] **Stabilization**
+  - [x] Fix: Increase `npm install -g` timeout from 120s to 300s to avoid ETIMEDOUT.
+  - [x] Fix: Added `npx` execution fallback for Claude Code CLI to ensure robustness.
 - [ ] **Enhancement**
   - [ ] Port Playwright visual-diffing to a script Claude can use.
   - [ ] Configure `CLAUDE.md` to enforce the Lovaclone design system and tech stack.
