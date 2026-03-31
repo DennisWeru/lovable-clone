@@ -24,33 +24,43 @@ export default function Navbar() {
     let isMounted = true;
 
     const fetchCredits = async (userId: string) => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("credits")
-        .eq("id", userId)
-        .single();
-      
-      if (isMounted && profile) {
-        setCredits(profile.credits);
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("credits")
+          .eq("id", userId)
+          .single();
+        
+        if (isMounted && profile) {
+          setCredits(profile.credits);
+        }
+      } catch (e) {
+        console.error("Error fetching credits:", e);
       }
     };
 
-    const getUserData = async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (!isMounted) return;
-      
-      setUser(currentUser);
-      
-      if (currentUser) {
-        await fetchCredits(currentUser.id);
+    const initializeAuth = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!isMounted) return;
+        
+        const currentUser = data?.user ?? null;
+        setUser(currentUser);
+        
+        if (currentUser) {
+          await fetchCredits(currentUser.id);
+        }
+      } catch (e) {
+        console.error("Auth init error:", e);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
-    getUserData();
+    initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!isMounted) return;
         
         const newUser = session?.user ?? null;
@@ -61,6 +71,8 @@ export default function Navbar() {
         } else {
           setCredits(null);
         }
+        
+        // Ensure loading is finished on auth state changes as well
         setIsLoading(false);
       }
     );
