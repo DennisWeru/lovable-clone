@@ -98,3 +98,26 @@ Removed `shell: true` from all `spawn` calls within the worker script. By using 
 ### Rationale
 -   **Security**: Prevents potential shell injection vulnerabilities.
 -   **Robustness**: Allows the agent to handle any prompt text without mangling the command structure.
+
+## Hardening Claude Code Authentication and Non-Interactive Execution (2026-03-31)
+
+### Problem
+Despite successfully spawning the Claude CLI, the agent remained "stuck" after the initial stdin warning. This was due to two factors:
+1.  **Authentication Gap**: `ANTHROPIC_API_KEY` was being set to an empty string, which likely triggered an interactive login prompt that the non-interactive agent could not fulfill.
+2.  **Stdin Wait**: The CLI was waiting several seconds for potentially piped input, which was unnecessary for this automated workflow.
+
+### Solution
+Ensured total non-interactive execution and proper auth passed through OpenRouter:
+1.  **Auth Fix**: Explicitly set `ANTHROPIC_API_KEY` to the `OPENROUTER_API_KEY`. This informs the Anthropic SDK (used by Claude Code) to use the provided key for all backend requests.
+2.  **Piped Stdin**: Configured `stdio: ["ignore", "pipe", "pipe"]` in the Node `spawn` call. This is the equivalent of running `claude < /dev/null`, which tells the CLI immediately that no piped input is coming, bypassing the "Warning: no stdin data" wait time.
+3.  **Enhanced Debugging**: Switched to `process.stdout.write` and `process.stderr.write` within the worker script to ensure that the worker's own console logs capture the detailed output from the spawned CLI for easier troubleshooting.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    -   Updated the `env` object in `runClaude` to include `ANTHROPIC_API_KEY`.
+    -   Added `stdio` configuration to both the primary and fallback `spawn` calls.
+    -   Improved worker-side output logging.
+
+### Rationale
+-   **Eliminate Interaction**: Removes all possible blockers where the CLI might pause to wait for user input.
+-   **Direct Auth**: Ensures the underlying SDK recognizes the API key correctly when pointing to the OpenRouter base URL.

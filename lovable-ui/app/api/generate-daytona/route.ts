@@ -303,14 +303,12 @@ async function runClaude() {
   const env = {
     ...process.env,
     ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
-    ANTHROPIC_AUTH_TOKEN: OPENROUTER_API_KEY,
-    ANTHROPIC_API_KEY: "", // Force usage of OpenRouter via base URL
-    CLAUDE_MODEL: MODEL    // Pass the selected model to Claude Code
+    ANTHROPIC_API_KEY: OPENROUTER_API_KEY,      // Required for auth via OpenRouter
+    ANTHROPIC_AUTH_TOKEN: OPENROUTER_API_KEY,   // Secondary for some configurations
+    CLAUDE_MODEL: MODEL                         // Selected model name
   };
 
   // Construct the command
-  // -p: prompt (non-interactive mode)
-  // --allowedTools: pre-approve crucial tools for autonomous work
   const args = [
     "-p", PROMPT,
     "--allowedTools", "Read,Edit,Bash",
@@ -318,27 +316,27 @@ async function runClaude() {
   ];
 
   return new Promise((resolve, reject) => {
-    // Try running 'claude' directly first (assuming global install), or fall back to 'npx'
-    // Using npx --yes ensures non-interactive execution for automated workers
+    // Try running 'claude' directly first
     const command = "claude";
-    
     console.log("[Worker] Spawning:", command, args.join(" "));
     
+    // Using stdio: ['ignore', 'pipe', 'pipe'] to simulate < /dev/null and skip the 3s delay
     const cp = spawn(command, args, { 
       env, 
-      cwd: projectDir
+      cwd: projectDir,
+      stdio: ["ignore", "pipe", "pipe"] 
     });
     
     const setupHandlers = (proc) => {
       proc.stdout.on("data", (data) => {
         const text = data.toString();
-        console.log("[Claude STDOUT]:", text);
+        process.stdout.write("[Claude STDOUT]: " + text); // Debug in worker log
         sendUpdate("progress", { message: text });
       });
 
       proc.stderr.on("data", (data) => {
         const errText = data.toString();
-        console.warn("[Claude STDERR]:", errText);
+        process.stderr.write("[Claude STDERR]: " + errText); // Debug in worker log
         if (!errText.includes("warning") && !errText.includes("Deprecation")) {
            sendUpdate("progress", { message: "⚠️ " + errText });
         }
@@ -373,7 +371,11 @@ async function runClaude() {
       if (err.code === "ENOENT") {
         console.warn("[Worker] 'claude' command not found, retrying with npx...");
         const npxArgs = ["--yes", "@anthropic-ai/claude-code", ...args];
-        const npxCp = spawn("npx", npxArgs, { env, cwd: projectDir });
+        const npxCp = spawn("npx", npxArgs, { 
+          env, 
+          cwd: projectDir,
+          stdio: ["ignore", "pipe", "pipe"] 
+        });
         setupHandlers(npxCp);
       } else {
         console.error("[Worker] Initial spawn error:", err);
