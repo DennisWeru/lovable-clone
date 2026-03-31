@@ -306,7 +306,7 @@ async function runClaude() {
   const args = [
     "-p", PROMPT,
     "--allowedTools", "Read,Edit,Bash",
-    "--output-format", "plain"
+    "--output-format", "text"
   ];
 
   console.log("[Worker] Spawning: claude", args.join(" "));
