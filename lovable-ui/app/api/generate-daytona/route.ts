@@ -171,10 +171,11 @@ export async function POST(req: NextRequest) {
 
     // 6. Worker Payload (Claude Code CLI Bootstrap)
     // @ts-ignore
+    const i = "import";
     const workerContent = String.raw`
-const { execSync, spawn } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+${i} { execSync, spawn } from "child_process";
+${i} * as fs from "fs";
+${i} * as path from "path";
 
 // Global error tracking
 process.on("uncaughtException", (err) => {
