@@ -141,3 +141,27 @@ Ensured the dev server is detached and persistent, and delayed the completion si
 ### Rationale
 -   **User Experience**: Prevents the confusing state where a project is "done" but the website can't be viewed.
 -   **Reliability**: Provides a much more stable handoff from the "Agent thinking" phase to the "Live Preview" phase.
+
+## Fixing Inconsistent Navbar Auth State (2026-03-31)
+
+### Problem
+Users reported that the Navbar would "sometimes" show a 'Log in' button even when they were already authenticated and actively using the dashboard. This was caused by several issues in the `Navbar` component:
+1.  **Flickering Auth Status**: The `user` state was initialized to `null`. During the initial client-side auth check, the component would default to rendering the unauthenticated UI (Log in/Get started buttons).
+2.  **Performance & Stability**: The `createClient()` (Supabase) function was called on every render, creating a new client instance and causing the `useEffect` to re-synchronize and re-subscribe to auth changes on every single state update.
+3.  **Race Conditions**: Multiple competing auth check logic paths (`getUserData` vs `onAuthStateChange`).
+
+### Solution
+Implemented a more robust auth state management in `Navbar.tsx`:
+1.  **Client Persistence**: Memoized the Supabase client instance with `useMemo` to ensure stability and prevent redundant re-subscriptions.
+2.  **Loading State**: Introduced an `isLoading` boolean to the `Navbar`. The component now hides auth-related buttons until the actual auth status is confirmed from Supabase.
+3.  **Unified Listener**: Refactored the auth check to rely primarily on `onAuthStateChange` for consistent updates across the application.
+
+### Changes
+-   Modified `lovable-ui/components/Navbar.tsx`:
+    -   Added `useMemo` for the Supabase browser client.
+    -   Integrated `isLoading` state and corresponding UI logic.
+    -   Cleaned up redundant auth checks.
+
+### Rationale
+-   **User Experience**: Eliminates the "flash of unauthenticated content" which made the app feel buggy and slow.
+-   **Optimization**: Reducing the number of Supabase client instances and subscription cycles improves client-side performance and prevents potential memory leaks or rate-limiting issues.

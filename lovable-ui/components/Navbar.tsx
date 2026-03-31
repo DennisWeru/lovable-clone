@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
@@ -8,7 +8,10 @@ import { useRouter } from "next/navigation";
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
-  const supabase = createClient();
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Memoize supabase client to prevent useEffect from re-running on every render
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
   const userRef = React.useRef<User | null>(null);
@@ -20,6 +23,18 @@ export default function Navbar() {
   useEffect(() => {
     let isMounted = true;
 
+    const fetchCredits = async (userId: string) => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", userId)
+        .single();
+      
+      if (isMounted && profile) {
+        setCredits(profile.credits);
+      }
+    };
+
     const getUserData = async () => {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!isMounted) return;
@@ -27,16 +42,9 @@ export default function Navbar() {
       setUser(currentUser);
       
       if (currentUser) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("credits")
-          .eq("id", currentUser.id)
-          .single();
-        
-        if (isMounted && profile) {
-          setCredits(profile.credits);
-        }
+        await fetchCredits(currentUser.id);
       }
+      setIsLoading(false);
     };
 
     getUserData();
@@ -49,18 +57,11 @@ export default function Navbar() {
         setUser(newUser);
         
         if (newUser) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("credits")
-            .eq("id", newUser.id)
-            .single();
-          
-          if (isMounted && profile) {
-            setCredits(profile.credits);
-          }
+          await fetchCredits(newUser.id);
         } else {
           setCredits(null);
         }
+        setIsLoading(false);
       }
     );
 
@@ -120,8 +121,13 @@ export default function Navbar() {
       </div>
 
       {/* Auth buttons */}
-      <div className="flex items-center gap-6 text-sm">
-        {user ? (
+      <div className="flex items-center gap-6 text-sm min-w-[200px] justify-end">
+        {isLoading ? (
+          <div className="flex items-center gap-4 animate-pulse">
+            <div className="h-4 w-12 bg-gray-800 rounded" />
+            <div className="h-10 w-28 bg-gray-800 rounded-lg" />
+          </div>
+        ) : user ? (
           <>
             {credits !== null && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 border border-gray-800 rounded-full text-xs font-medium text-blue-400">
