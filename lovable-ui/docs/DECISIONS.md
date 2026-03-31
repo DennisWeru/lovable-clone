@@ -38,3 +38,24 @@ Locked core tool versions in the agent's system prompt and worker bootstrap scri
 -   **Compatibility**: Vite 5 supports Node 20.15.0 perfectly, avoiding the `rolldown` native binding issues.
 -   **Performance**: Matching the Playwright version to the container image prevents the agent from spending minutes downloading new browser binaries on every run.
 -   **Stability**: Version locking prevents "silent" breakages when major versions of upstream tools are released.
+
+## Switch to Claude Code CLI for Agentic Workflow (2026-03-31)
+
+### Problem
+The custom Node.js/OpenRouter agentic worker was complex to maintain, prone to tool-calling errors, and lacked the robust autonomous capabilities of modern specialized CLI agents like Claude Code.
+
+### Solution
+Replaced the custom agent loop with a bootstrap worker that leverages the **Claude Code CLI** (`@anthropic-ai/claude-code`) running within the Daytona sandbox. 
+
+### Key Integration Points
+1.  **OpenRouter Compatibility**: Configured Claude Code to use OpenRouter as its backend by injecting `ANTHROPIC_BASE_URL` ("https://openrouter.ai/api") and `ANTHROPIC_AUTH_TOKEN` (the OpenRouter API key) into the worker's environment.
+2.  **Visual Verification**: Created a specialized `snapshot.mjs` script in the sandbox root. This allows Claude to take screenshots of the running Vite server (on port 3000) using the pre-installed Playwright 1.45.0 drivers.
+3.  **UI Feedback**: Piped Claude's terminal output (stdout/stderr) directly to the existing project webhooks, ensuring the "Agent Console Logs" in the frontend remain functional and real-time.
+4.  **Auto-Approval**: Configured Claude with `--allowedTools Read,Edit,Bash` and `-p` (non-interactive mode) for autonomous execution.
+5.  **Project Rules**: Injected a `CLAUDE.md` file into the sandbox project directory to enforce core standards: Vite 5, Tailwind CSS, and port 3000 hosting.
+
+### Rationale
+-   **Robustness**: Claude Code is built and optimized by Anthropic for high-reliability tool usage and self-correction.
+-   **Lower Maintenance**: Eliminates the need to maintain a custom, multi-hundred-line tool-calling loop in `route.ts`.
+-   **OpenRouter Support**: Maintains the existing billing and credit deduction logic by using OpenRouter's Anthropic-compatible API skin.
+-   **Visual Feedback**: Preserves the ability to "see" the generated website through Playwright snapshots, which Claude can now trigger via standard bash commands.
