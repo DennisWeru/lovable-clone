@@ -202,8 +202,29 @@ const SANDBOX_ID = process.env.SANDBOX_ID || "";
 const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
 const SITE_URL = process.env.SITE_URL || "https://lovable-clone.vercel.app";
 
+const FRIENDLY_MESSAGES = [
+  "Analyzing your request and planning the best approach...",
+  "Designing a modern, responsive layout for your app...",
+  "Fine-tuning the UI components for a premium feel...",
+  "Setting up the project structure and dependencies...",
+  "Implementing your custom features with Claude's assistance...",
+  "Almost there! Polishing the final details...",
+  "This is going to look great! 🌟",
+  "Optimizing performance and ensuring smooth transitions...",
+  "Crafting a beautiful color palette for your design...",
+  "Ensuring mobile responsiveness and cross-device compatibility...",
+  "Applying best practices for clean, maintainable code...",
+  "Adding subtle micro-animations for an enhanced experience...",
+  "Still working on it! Building complex features takes a moment...",
+  "The agent is currently busy writing high-quality code..."
+];
+
+let lastUpdateAt = Date.now();
+let currentFriendlyIndex = 0;
+
 async function sendUpdate(type, data) {
   if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
+  lastUpdateAt = Date.now();
   try {
     await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -213,12 +234,24 @@ async function sendUpdate(type, data) {
   } catch (e) { console.error("[Worker] sendUpdate failed:", type, e.message); }
 }
 
+function startFriendlyRotation() {
+  setInterval(async () => {
+    // Only send if no update in the last 15 seconds
+    if (Date.now() - lastUpdateAt > 15000) {
+      const msg = FRIENDLY_MESSAGES[currentFriendlyIndex];
+      currentFriendlyIndex = (currentFriendlyIndex + 1) % FRIENDLY_MESSAGES.length;
+      await sendUpdate("progress", { message: "✨ " + msg });
+    }
+  }, 15000);
+}
+
 const projectDir = path.join(process.cwd(), "website-project");
 if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
 async function main() {
   try {
-    await sendUpdate("progress", { message: "🚀 Bootstrapping Claude Code agent environment..." });
+    startFriendlyRotation();
+    await sendUpdate("progress", { message: "🚀 Preparing a fresh environment for your project..." });
     console.log("[Worker] Bootstrapping environment...");
 
     // 1. Ensure basic package.json for the sandbox root
@@ -226,23 +259,43 @@ async function main() {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
     }
 
-      // 2. Install Claude Code CLI globally if not present (Increase timeout to 5 mins)
+    // 2. Ensure Claude CLI is available (Optimized: Check local, global, then install locally)
+    let claudeBinary = "claude";
+    const localClaudeDir = "/home/daytona/.claude";
+    const localClaudeBin = path.join(localClaudeDir, "node_modules", ".bin", "claude");
+
     try {
       console.log("[Worker] Checking for Claude CLI...");
-      execSync("claude --version", { stdio: "ignore" });
+      if (fs.existsSync(localClaudeBin)) {
+        claudeBinary = localClaudeBin;
+        console.log("[Worker] Using persistent local Claude CLI:", claudeBinary);
+      } else {
+        execSync("claude --version", { stdio: "ignore" });
+        console.log("[Worker] Using global Claude CLI");
+      }
     } catch (e) {
-      await sendUpdate("progress", { message: "📦 Installing @anthropic-ai/claude-code..." });
-      console.log("[Worker] Installing Claude CLI globally...");
-      const user = execSync("whoami", { encoding: "utf8" }).trim();
-      const npmCmd = (user === "root" || user === "daytona") 
-        ? "npm install -g @anthropic-ai/claude-code --no-fund --no-audit" 
-        : "sudo npm install -g @anthropic-ai/claude-code --no-fund --no-audit";
+      await sendUpdate("progress", { message: "📦 Initializing the Claude Code agent... This happens only once and might take a few minutes." });
+      console.log("[Worker] Claude CLI not found. Installing locally to ensure persistence and speed...");
+      
+      if (!fs.existsSync(localClaudeDir)) fs.mkdirSync(localClaudeDir, { recursive: true });
+      
+      // Use local install - typically more reliable than global in container environments
+      // Added flags to speed up and reduce noise
+      const npmCmd = "cd " + localClaudeDir + " && npm install @anthropic-ai/claude-code --no-fund --no-audit --no-update-notifier --loglevel error";
       
       try {
-        execSync(npmCmd, { stdio: "inherit", timeout: 300000 }); // 5 minutes
+        console.log("[Worker] Running:", npmCmd);
+        // No timeout here - we've seen it take up to 14 mins in some environments
+        execSync(npmCmd, { stdio: "inherit" });
+        if (fs.existsSync(localClaudeBin)) {
+          claudeBinary = localClaudeBin;
+        } else {
+          claudeBinary = "npx --yes @anthropic-ai/claude-code";
+        }
       } catch (err) {
-        console.warn("[Worker] Global install failed or timed out, will try npx fallback", err.message);
-        await sendUpdate("progress", { message: "⚠️ Global install took too long, switching to npx... (this might be slower)" });
+        console.warn("[Worker] Local install failed, will fall back to direct npx run", err.message);
+        claudeBinary = "npx --yes @anthropic-ai/claude-code";
+        await sendUpdate("progress", { message: "⚠️ Optimizing installation process... Falling back to on-demand execution." });
       }
     }
 
@@ -284,9 +337,10 @@ async function main() {
     fs.writeFileSync("/home/daytona/snapshot.mjs", snapshotScript);
 
     // 5. Execute Claude Code Agent
-    await runClaude();
+    await runClaude(claudeBinary);
 
     console.log("[Worker] Claude Code run complete. Ensuring dev server is active...");
+    await sendUpdate("progress", { message: "🔗 Plugging everything together and starting the preview server..." });
     
     // 6. Ensure dev server is running persistently
     try {
@@ -326,7 +380,7 @@ async function main() {
 
     // Final completion message
     await sendUpdate("complete", { 
-      message: "Project build complete! Claude has finished the task.", 
+      message: "Success! Your project is ready for preview. 🎉", 
       metadata: { 
         sandboxId: SANDBOX_ID, 
         previewUrl: PREVIEW_URL,
@@ -336,38 +390,41 @@ async function main() {
   } catch (err) {
     console.error("[Worker] Fatal error in main loop:", err);
     await sendUpdate("error", { 
-      message: "Fatal: " + (err.message || "Unknown error"), 
+      message: "Something went wrong: " + (err.message || "Unknown error"), 
       metadata: { stack: err.stack }
     });
     process.exit(1);
   }
 }
 
-async function runClaude() {
-  await sendUpdate("progress", { message: "🤖 Claude Code Agent is thinking..." });
+async function runClaude(command) {
+  await sendUpdate("progress", { message: "🤖 Lovable Agent is thinking about your project..." });
   
   const env = {
     ...process.env,
     ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
     ANTHROPIC_API_KEY: OPENROUTER_API_KEY,      // Required for auth via OpenRouter
     ANTHROPIC_AUTH_TOKEN: OPENROUTER_API_KEY,   // Secondary for some configurations
-    CLAUDE_MODEL: MODEL                         // Selected model name
+    CLAUDE_MODEL: MODEL,                        // Selected model name
+    NPM_CONFIG_CACHE: "/home/daytona/.npm-cache" // Persistent cache for npx
   };
 
-  // Construct the command
-  const args = [
-    "-p", PROMPT,
-    "--allowedTools", "Read,Edit,Bash",
-    "--output-format", "text"
-  ];
+  // Construct the command parts
+  let actualCmd = command;
+  let actualArgs = [...args];
+
+  // If command is npx, we need to handle the arguments carefully
+  if (command.startsWith("npx")) {
+    const parts = command.split(" ");
+    actualCmd = parts[0];
+    actualArgs = [...parts.slice(1), ...args];
+  }
 
   return new Promise((resolve, reject) => {
-    // Try running 'claude' directly first
-    const command = "claude";
-    console.log("[Worker] Spawning:", command, args.join(" "));
+    console.log("[Worker] Spawning:", actualCmd, actualArgs.join(" "));
     
     // Using stdio: ['ignore', 'pipe', 'pipe'] to simulate < /dev/null and skip the 3s delay
-    const cp = spawn(command, args, { 
+    const cp = spawn(actualCmd, actualArgs, { 
       env, 
       cwd: projectDir,
       stdio: ["ignore", "pipe", "pipe"] 
@@ -377,14 +434,20 @@ async function runClaude() {
       proc.stdout.on("data", (data) => {
         const text = data.toString();
         process.stdout.write("[Claude STDOUT]: " + text); // Debug in worker log
-        sendUpdate("progress", { message: text });
+        
+        // Filter out ANSI codes and noise if needed, but for now just send it
+        // The frontend will treat this as 'Thinking about next steps...' or similar 
+        // if no progress message is sent, but we can also use 'Agent active with tools...'
+        // to trigger the frontend's special handling
+        sendUpdate("progress", { message: "Agent active with tools..." });
       });
 
       proc.stderr.on("data", (data) => {
         const errText = data.toString();
         process.stderr.write("[Claude STDERR]: " + errText); // Debug in worker log
         if (!errText.includes("warning") && !errText.includes("Deprecation")) {
-           sendUpdate("progress", { message: "⚠️ " + errText });
+           // Don't spam the user with stderr unless it looks important
+           // sendUpdate("progress", { message: "⚠️ " + errText });
         }
       });
 
@@ -405,22 +468,6 @@ async function runClaude() {
       });
     };
 
-    cp.on("error", (err) => {
-      if (err.code === "ENOENT") {
-        console.warn("[Worker] 'claude' command not found, retrying with npx...");
-        const npxArgs = ["--yes", "@anthropic-ai/claude-code", ...args];
-        const npxCp = spawn("npx", npxArgs, { 
-          env, 
-          cwd: projectDir,
-          stdio: ["ignore", "pipe", "pipe"] 
-        });
-        setupHandlers(npxCp);
-      } else {
-        console.error("[Worker] Initial spawn error:", err);
-        reject(err);
-      }
-    });
-
     if (cp.pid) {
       setupHandlers(cp);
     }
@@ -428,6 +475,7 @@ async function runClaude() {
 }
 
 main();
+
 `;
 
 

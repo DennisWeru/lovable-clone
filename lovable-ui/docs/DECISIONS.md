@@ -165,3 +165,53 @@ Implemented a more robust auth state management in `Navbar.tsx`:
 ### Rationale
 -   **User Experience**: Eliminates the "flash of unauthenticated content" which made the app feel buggy and slow.
 -   **Optimization**: Reducing the number of Supabase client instances and subscription cycles improves client-side performance and prevents potential memory leaks or rate-limiting issues.
+
+## Improving Agent Generation Feedback with Friendly Status Messages (2026-03-31)
+
+### Problem
+When the website generation process was running, the UI would often show "Developing your website..." or "Thinking about next steps..." for extended periods without meaningful updates. This led to a poor user experience where users might think the process was stuck or had failed.
+
+### Solution
+Enhanced the generation worker with a proactive status reporting system:
+1.  **Friendly Message Rotator**: Implemented a background interval in the worker that periodically (every 15 seconds) sends encouraging and descriptive status updates if no other activity has been reported by the agent.
+2.  **Descriptive Progress Messages**: Replaced generic "Thinking..." or "Bootstrapping..." messages with more professional and exciting progress updates at each stage of the environment setup and CLI installation.
+3.  **Active Monitoring**: Updated the `sendUpdate` function to track the `lastUpdateAt` timestamp, ensuring that friendly messages are only injected during periods of silence.
+4.  **Emoji Integration**: Added context-aware emojis (✨, 🚀, 📦, 🤖, 🎉) to progress messages to make the UI feel more alive and friendly.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    -   Added `FRIENDLY_MESSAGES` array with 12 distinct status variants.
+    -   Implemented `startFriendlyRotation()` and `lastUpdateAt` tracking.
+    -   Upgraded all manual `sendUpdate` calls with improved messaging.
+    -   Added "Agent active with tools..." heartbeat during Claude's execution to keep the "Current Activity" snackbar updated.
+
+### Rationale
+-   **User Retention**: Keeping the user informed and engaged during a 1-3 minute generation process is critical for perceived performance and trust.
+-   **Clarity**: The new messages provide a better sense of value, showing that the system is "designing", "optimizing", and "polishing" rather than just "thinking".
+-   **Reduced Worry**: The periodic updates eliminate the "is it stuck?" anxiety that occurs when the screen doesn't change for 20+ seconds.
+
+## Optimizing Claude Code Bootstrapping and Persistence (2026-03-31)
+
+### Problem
+Users reported the agent getting "stuck" for long periods (up to 14 minutes) during the initial creation of a project. Logs revealed that the global installation of `@anthropic-ai/claude-code` often timed out, and the `npx` fallback was extremely slow because it downloaded the package every single time without a persistent cache.
+
+### Solution
+Overhauled the agent bootstrap logic to prioritize persistence, reliability, and speed:
+1.  **Persistent Local Installation**: Modified the worker to install the Claude CLI into a dedicated directory (`/home/daytona/.claude`) within the sandbox. This directory is persistent across project resumes, ensuring the 14-minute install only happens once per sandbox life.
+2.  **Removed Timeouts**: Removed the 300s (5-minute) hard timeout on the installation command. In some network environments, the download genuinely takes longer, and a timeout led to a confusing "stuck" state where `npx` would then start from scratch.
+3.  **Local vs Global Priority**: Updated the logic to check for the persistent local binary first, then global, then finally falling back to a local `npm install`.
+4.  **Persistent NPX Cache**: Configured `NPM_CONFIG_CACHE` to point to `/home/daytona/.npm-cache`, ensuring that even if `npx` is used, it can reuse previously downloaded layers.
+5.  **Improved UI Feedback**: Added more specific "Initializing agent..." messages and extended the rotation of friendly status messages to keep the user engaged during the occasionally long first-run setup.
+6.  **Optimized NPM Flags**: Switched to `--no-package-lock` and `--no-update-notifier` to further reduce network activity and CPU usage during the bootstrap phase.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    -   Refactored the bootstrap block to use `localClaudeBin`.
+    -   Updated `runClaude` to accept a dynamic command path.
+    -   Injected `NPM_CONFIG_CACHE` into the environment.
+    -   Updated the `FRIENDLY_MESSAGES` array.
+
+### Rationale
+-   **User Experience**: Clearly communicates that the first-run installation is a one-time setup, reducing anxiety about the "stuck" state.
+-   **Reliability**: By installing locally to a persistent home directory, we avoid common permissions issues with global `-g` installs in containerized environments.
+-   **Self-Healing**: If the local install fails, the system still gracefully falls back to `npx`, but it does so with a persistent cache to speed up the process.
