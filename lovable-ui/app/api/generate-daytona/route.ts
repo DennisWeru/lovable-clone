@@ -326,8 +326,7 @@ async function runClaude() {
     
     const cp = spawn(command, args, { 
       env, 
-      cwd: projectDir,
-      shell: true 
+      cwd: projectDir
     });
     
     const setupHandlers = (proc) => {
@@ -374,7 +373,7 @@ async function runClaude() {
       if (err.code === "ENOENT") {
         console.warn("[Worker] 'claude' command not found, retrying with npx...");
         const npxArgs = ["--yes", "@anthropic-ai/claude-code", ...args];
-        const npxCp = spawn("npx", npxArgs, { env, cwd: projectDir, shell: true });
+        const npxCp = spawn("npx", npxArgs, { env, cwd: projectDir });
         setupHandlers(npxCp);
       } else {
         console.error("[Worker] Initial spawn error:", err);

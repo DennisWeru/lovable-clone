@@ -81,3 +81,20 @@ Hardened the bootstrapping process in the agent worker:
 -   **Resilience**: The `npx` fallback ensures that even if the global installation takes too long or fails due to ephemeral file system issues, the agent can still attempt to run by downloading it on-demand during the execution phase.
 -   **Observability**: Improved logging helps diagnose why an installation might be slow or failing in specific sandbox regions.
 -   **User Experience**: Prevents "Fatal error in main loop" crashes that were completely blocking website generation for users.
+
+## Fixing Shell Injection in Claude Code Spawning (2026-03-31)
+
+### Problem
+Prompts containing semicolons or other shell-special characters were causing `Fatal: Claude exited with code 127`. Because `shell: true` was enabled in Node's `spawn`, the shell was interpreting the semicolon in the prompt as a command separator, attempting to run the rest of the prompt as a standalone command (e.g., trying to run "This page isn't working..." as a binary).
+
+### Solution
+Removed `shell: true` from all `spawn` calls within the worker script. By using the array-of-arguments form of `spawn` without a shell, Node.js handles argument passing directly to the OS, ensuring that the prompt is passed to Claude Code as a single literal argument regardless of its content.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    -   Removed `shell: true` from the `claude` spawn.
+    -   Removed `shell: true` from the `npx` fallback spawn.
+
+### Rationale
+-   **Security**: Prevents potential shell injection vulnerabilities.
+-   **Robustness**: Allows the agent to handle any prompt text without mangling the command structure.
