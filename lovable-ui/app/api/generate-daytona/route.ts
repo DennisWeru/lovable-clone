@@ -251,28 +251,27 @@ async function main() {
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
 
     // 4. Create a binary-free screenshot snapshot script for Claude to call
-    // @ts-ignore
-    const snapshotScript = String.raw`
-(async () => {
-  const p = "play" + "wright";
-  const { chromium } = await import(/* webpackIgnore: true */ p);
-  const fs = await import("fs");
-
-  const browser = await chromium.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
-  const page = await browser.newPage();
-  try {
-    await page.goto("http://localhost:3000", { waitUntil: "networkidle", timeout: 30000 });
-    const buffer = await page.screenshot();
-    fs.writeFileSync("/home/daytona/latest-screenshot.png", buffer);
-    console.log("Screenshot saved to /home/daytona/latest-screenshot.png.");
-  } catch (err) {
-    console.error("Screenshot failed:", err);
-    process.exit(1);
-  } finally {
-    await browser.close();
-  }
-})();
-`;
+    const snapshotScript = [
+      "(async () => {",
+      "  const p = 'play' + 'wright';",
+      "  const { chromium } = await import(/* webpackIgnore: true */ p);",
+      "  const fs = await import('fs');",
+      "",
+      "  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });",
+      "  const page = await browser.newPage();",
+      "  try {",
+      "    await page.goto('http://localhost:3000', { waitUntil: 'networkidle', timeout: 30000 });",
+      "    const buffer = await page.screenshot();",
+      "    fs.writeFileSync('/home/daytona/latest-screenshot.png', buffer);",
+      "    console.log('Screenshot saved to /home/daytona/latest-screenshot.png.');",
+      "  } catch (err) {",
+      "    console.error('Screenshot failed:', err);",
+      "    process.exit(1);",
+      "  } finally {",
+      "    await browser.close();",
+      "  }",
+      "})();"
+    ].join("\n");
     fs.writeFileSync("/home/daytona/snapshot.mjs", snapshotScript);
 
     // 5. Execute Claude Code Agent
