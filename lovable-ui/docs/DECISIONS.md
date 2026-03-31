@@ -215,3 +215,44 @@ Overhauled the agent bootstrap logic to prioritize persistence, reliability, and
 -   **User Experience**: Clearly communicates that the first-run installation is a one-time setup, reducing anxiety about the "stuck" state.
 -   **Reliability**: By installing locally to a persistent home directory, we avoid common permissions issues with global `-g` installs in containerized environments.
 -   **Self-Healing**: If the local install fails, the system still gracefully falls back to `npx`, but it does so with a persistent cache to speed up the process.
+
+## GitHub Export Functionality (2026-03-31)
+
+### Problem
+Users wanted a way to export their generated code to a GitHub repository for further development, hosting, or version control. Previously, the code was only available within the Daytona sandbox.
+
+### Solution
+Implemented a "Export to GitHub" feature that pushes the generated project directly from the Daytona sandbox to a user-specified GitHub repository.
+
+### Key Integration Points
+1.  **Backend API (`/api/export-github`)**: 
+    - Verifies user ownership and sandbox state.
+    - Uses **Octokit** to authenticate with GitHub and create the repository if it doesn't already exist.
+    - Triggers a Git push sequence within the Daytona sandbox using the user's Personal Access Token (PAT).
+2.  **Frontend UI**:
+    - Added an "Export to GitHub" button in the generation page's preview toolbar.
+    - Implemented a `ExportGithubModal` to collect the GitHub PAT and desired repository name.
+    - Uses `localStorage` to securely persist the PAT on the user's browser for future exports.
+3.  **Database Persistence**:
+    - Added `github_repo` and `github_url` columns to the `projects` table to track exported links.
+
+### Rationale
+-   **Direct Push**: Executing the Git operations within the sandbox itself is much more efficient than downloading all files to the Next.js server and then uploading them to GitHub. It handles large projects and binary files natively.
+-   **User Privacy**: By asking for a PAT and storing it in `localStorage`, we avoid storing sensitive third-party credentials on our own servers.
+-   **Seamless Flow**: The integration automatically creates the repo if missing, making the export a "one-click" experience for most users after initial setup.
+
+## Fixing Model Selection and Broken Worker Script (2026-03-31)
+
+### Problem
+The agent was consistently defaulting to Anthropic Claude models (specifically Sonnet or Opus) regardless of the model selected on the landing page (e.g., Gemini 3 Flash). Furthermore, the worker script was logically broken due to an undefined `args` variable, causing the Claude Code agent to fail or run without arguments.
+
+### Solution
+1. **Explicit Model Flag**: Updated the `runClaude` function in `lovable-ui/app/api/generate-daytona/route.ts` to explicitly pass the `--model` flag to the Claude Code CLI.
+2. **Defined Args**: Fixed the `ReferenceError: args is not defined` by properly initializing the `args` array with the prompt and necessary operational flags (`-p`, `--model`, `-y`).
+3. **API Compatibility**: Updated the `ANTHROPIC_BASE_URL` for OpenRouter from `https://openrouter.ai/api` to `https://openrouter.ai/api/v1` to ensure full compatibility with the Anthropic SDK used by the CLI.
+4. **Environment Consistency**: Added `ANTHROPIC_MODEL` to the environment variables passed to the worker as an additional layer of model enforcement.
+
+### Rationale
+- **Model Control**: Without the `--model` flag, specialized CLI agents like `claude-code` will fall back to their internal defaults (typically Sonnet 3.5), ignoring global environment variables.
+- **Robustness**: Defining the `args` variable ensures the agent receives its instructions and can execute autonomously without manual intervention.
+- **Predictability**: Using the `/v1` suffix and explicit model markers minimizes the chance of OpenRouter's "auto-fallback" logic kicking in unexpectedly.

@@ -46,6 +46,25 @@ function GenerateContent() {
   const [logs, setLogs] = useState<string>("");
   const [showConsole, setShowConsole] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+
+  // GitHub Export State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [githubToken, setGithubToken] = useState("");
+  const [repoName, setRepoName] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportUrl, setExportUrl] = useState<string | null>(null);
+
+  // Load github token from storage on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem("github_token");
+    if (savedToken) setGithubToken(savedToken);
+    
+    // Default repo name from prompt
+    if (prompt) {
+      setRepoName(prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 50));
+    }
+  }, [prompt]);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -340,6 +359,45 @@ function GenerateContent() {
       setError({ message: err.message || "An error occurred" });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleExportGithub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sandboxId || !githubToken || !repoName || isExporting) return;
+
+    try {
+      setIsExporting(true);
+      setExportError(null);
+      setExportUrl(null);
+
+      // Save token for next time
+      localStorage.setItem("github_token", githubToken);
+
+      const response = await fetch("/api/export-github", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sandboxId,
+          githubToken,
+          repoName,
+          description: `Automatically generated from prompt: ${prompt}`,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Export failed");
+
+      setExportUrl(data.repoUrl);
+      // Wait 3 seconds then close modal
+      setTimeout(() => {
+        // setShowExportModal(false);
+      }, 3000);
+    } catch (err: any) {
+      setExportError(err.message);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -682,6 +740,16 @@ function GenerateContent() {
                 <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Live Preview</span>
               </div>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-all flex items-center gap-1.5 text-xs border border-transparent hover:border-gray-700"
+                  title="Export code to GitHub repo"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                  </svg>
+                  <span>Export to GitHub</span>
+                </button>
                 <a
                   href={previewUrl}
                   target="_blank"
@@ -767,6 +835,107 @@ function GenerateContent() {
           </div>
         </div>
       </div>
+
+      {/* GitHub Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Export to GitHub</h3>
+              <button 
+                onClick={() => setShowExportModal(false)}
+                className="text-gray-500 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <form onSubmit={handleExportGithub} className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-400">GitHub Personal Access Token</label>
+                <input
+                  type="password"
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  required
+                />
+                <p className="text-[10px] text-gray-500">
+                  Required scopes: <code className="text-blue-400/80">repo</code>. 
+                  <a href="https://github.com/settings/tokens" target="_blank" className="text-blue-500 hover:underline ml-1">Create one here</a>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-400">Repository Name</label>
+                <input
+                  type="text"
+                  value={repoName}
+                  onChange={(e) => setRepoName(e.target.value)}
+                  placeholder="my-awesome-project"
+                  className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  required
+                />
+              </div>
+
+              {exportError && (
+                <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
+                  {exportError}
+                </div>
+              )}
+
+              {exportUrl && (
+                <div className="p-4 bg-green-900/20 border border-green-800 rounded-lg space-y-2">
+                  <p className="text-green-400 text-sm font-medium">✨ Export Successful!</p>
+                  <a 
+                    href={exportUrl} 
+                    target="_blank" 
+                    className="flex items-center gap-2 text-blue-400 hover:text-blue-300 text-xs font-mono break-all"
+                  >
+                    {exportUrl}
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => setShowExportModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg font-medium transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isExporting || !githubToken || !repoName}
+                  className="flex-[2] px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                >
+                  {isExporting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                      </svg>
+                      Push to GitHub
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

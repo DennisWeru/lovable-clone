@@ -402,14 +402,23 @@ async function runClaude(command) {
   
   const env = {
     ...process.env,
-    ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+    ANTHROPIC_BASE_URL: "https://openrouter.ai/api/v1",
     ANTHROPIC_API_KEY: OPENROUTER_API_KEY,      // Required for auth via OpenRouter
     ANTHROPIC_AUTH_TOKEN: OPENROUTER_API_KEY,   // Secondary for some configurations
-    CLAUDE_MODEL: MODEL,                        // Selected model name
+    ANTHROPIC_MODEL: MODEL,                     // Selected model name (for SDK if flag fails)
+    CLAUDE_MODEL: MODEL,                        // Keep compatibility with logic if needed
     NPM_CONFIG_CACHE: "/home/daytona/.npm-cache" // Persistent cache for npx
   };
 
   // Construct the command parts
+  const args = [
+    "-p",
+    PROMPT,
+    "--model",
+    MODEL,
+    "-y" // Always yes to confirm tool usage in non-interactive mode
+  ];
+
   let actualCmd = command;
   let actualArgs = [...args];
 
