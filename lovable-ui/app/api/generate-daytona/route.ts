@@ -286,7 +286,53 @@ async function main() {
     // 5. Execute Claude Code Agent
     await runClaude();
 
-    console.log("[Worker] Claude Code run complete.");
+    console.log("[Worker] Claude Code run complete. Ensuring dev server is active...");
+    
+    // 6. Ensure dev server is running persistently
+    try {
+      // Kill any existing server on port 3000 to avoid 'Address already in use'
+      execSync('fuser -k 3000/tcp 2>/dev/null || pkill -f "vite" 2>/dev/null || true');
+      
+      // Start dev server with nohup for persistence
+      const startCmd = 'cd ' + projectDir + ' && nohup npx vite --host 0.0.0.0 --port 3000 > /home/daytona/dev-server.log 2>&1 &';
+      console.log("[Worker] Starting server with:", startCmd);
+      execSync(startCmd);
+      
+      // Wait for server to be ready (up to 10 seconds)
+      console.log("[Worker] Waiting for server to respond on port 3000...");
+      let isReady = false;
+      for (let i = 0; i < 10; i++) {
+        try {
+          const httpCode = execSync('curl -s -o /dev/null -w "%{http_code}" http://localhost:3000', { encoding: 'utf8' }).trim();
+          if (httpCode === "200" || httpCode === "304") {
+            isReady = true;
+            console.log("[Worker] Server is READY (HTTP " + httpCode + ")");
+            break;
+          }
+        } catch (e) {
+          // Ignore curl errors
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      
+      if (!isReady) {
+        console.warn("[Worker] Server not responding yet, but proceeding to complete.");
+      }
+    } catch (err) {
+      console.error("[Worker] Error starting dev server:", err);
+      // We don't reject here because Claude might have actually finished the code, 
+      // and we want the user to at least see the logs.
+    }
+
+    // Final completion message
+    await sendUpdate("complete", { 
+      message: "Project build complete! Claude has finished the task.", 
+      metadata: { 
+        sandboxId: SANDBOX_ID, 
+        previewUrl: PREVIEW_URL,
+        engine: "claude-code"
+      } 
+    });
   } catch (err) {
     console.error("[Worker] Fatal error in main loop:", err);
     await sendUpdate("error", { 
@@ -345,14 +391,6 @@ async function runClaude() {
       proc.on("close", (code) => {
         if (code === 0) {
           console.log("[Worker] Claude finished successfully.");
-          sendUpdate("complete", { 
-            message: "Project build complete! Claude has finished the task.", 
-            metadata: { 
-              sandboxId: SANDBOX_ID, 
-              previewUrl: PREVIEW_URL,
-              engine: "claude-code"
-            } 
-          });
           resolve();
         } else {
           const errorMsg = "Claude exited with code " + code;

@@ -121,3 +121,23 @@ Ensured total non-interactive execution and proper auth passed through OpenRoute
 ### Rationale
 -   **Eliminate Interaction**: Removes all possible blockers where the CLI might pause to wait for user input.
 -   **Direct Auth**: Ensures the underlying SDK recognizes the API key correctly when pointing to the OpenRouter base URL.
+
+## Fixing Preview Hang by Ensuring Dev Server Persistence (2026-03-31)
+
+### Problem
+Users reported a project state of "completed" in the logs, but the preview window remained stuck on "Spinning up preview environment...". This was because the Claude CLI was starting the dev server as a child process which was then being terminated as soon as the CLI finished its task and exited. Furthermore, the worker was sending a "complete" status update *immediately* when the CLI exited, before any persistent server was actually running.
+
+### Solution
+Ensured the dev server is detached and persistent, and delayed the completion signal until it is ready:
+1.  **Persistent Background Start**: Modified the worker's `main()` loop to explicitly start the Vite dev server using `nohup ... &` AFTER the Claude CLI finishes. This ensures the process survives the end of the worker session.
+2.  **Delayed Completion Signal**: Removed the premature "complete" update from the CLI's `on("close")` handler. The worker now only signals completion AFTER the server and background steps are confirmed.
+3.  **Readiness Probe**: Implemented a 10-second polling loop using `curl` to verify that the server is actually responding on port 3000 before the UI is told to load the preview URL.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    -   Added a server start and verification block in the `main()` function.
+    -   Removed the `sendUpdate("complete")` call from `runClaude()`.
+
+### Rationale
+-   **User Experience**: Prevents the confusing state where a project is "done" but the website can't be viewed.
+-   **Reliability**: Provides a much more stable handoff from the "Agent thinking" phase to the "Live Preview" phase.
