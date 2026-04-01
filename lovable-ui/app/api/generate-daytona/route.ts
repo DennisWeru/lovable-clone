@@ -332,11 +332,14 @@ async function main() {
         fs.writeFileSync(path.join(localClaudeDir, "package.json"), JSON.stringify({ name: "claude-env", type: "module" }));
       }
       
-      const npmCmd = "cd " + localClaudeDir + " && npm install @anthropic-ai/claude-code --no-fund --no-audit --no-update-notifier --loglevel error";
+      const npmCmd = "cd " + localClaudeDir + " && npm install @anthropic-ai/claude-code --no-fund --no-audit --no-update-notifier --loglevel error --cache /home/daytona/.npm-cache";
       
       try {
         console.log("[Worker] Running:", npmCmd);
-        const out = execSync(npmCmd, { encoding: "utf8" });
+        const out = execSync(npmCmd, { 
+          encoding: "utf8",
+          env: { ...process.env, NPM_CONFIG_CACHE: "/home/daytona/.npm-cache" }
+        });
         console.log("[Worker] NPM INSTALL OUTPUT:", out);
 
         if (fs.existsSync(localClaudeBin)) {
