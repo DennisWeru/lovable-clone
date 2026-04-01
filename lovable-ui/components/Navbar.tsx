@@ -124,45 +124,20 @@ export default function Navbar() {
           href="/"
           className="flex items-center gap-2.5 text-2xl font-bold text-white hover:opacity-90 transition-all group"
         >
-          {/* Reimagined Hexagon Logo: Geometric Swarm Icon */}
+          {/* Minimalist Hexagon Logo */}
           <div className="relative w-8 h-8 flex items-center justify-center">
             <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]">
               <defs>
-                <linearGradient id="swarm-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <linearGradient id="hex-grad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#fcd34d" />
-                  <stop offset="50%" stopColor="#f59e0b" />
                   <stop offset="100%" stopColor="#d97706" />
                 </linearGradient>
               </defs>
-              {/* Bold Hexagon Border */}
               <path 
                 d="M50 5 L92 28 L92 72 L50 95 L8 72 L8 28 Z" 
-                fill="none" 
-                stroke="url(#swarm-grad)" 
-                strokeWidth="6"
-                strokeLinejoin="round"
-                className="opacity-20"
+                fill="url(#hex-grad)" 
+                className="group-hover:scale-110 transition-transform duration-500"
               />
-              {/* The "V" Wings (High-Tech & Action-Oriented) */}
-              <path 
-                d="M50 45 L85 15 M50 45 L15 15" 
-                stroke="url(#swarm-grad)" 
-                strokeWidth="10" 
-                strokeLinecap="round" 
-                fill="none"
-              />
-              {/* The Central Honeycomb Column / Body */}
-              <path 
-                d="M50 40 
-                   C60 40 65 50 65 60 
-                   C65 75 50 85 50 85 
-                   C50 85 35 75 35 60 
-                   C35 50 40 40 50 40 Z" 
-                fill="url(#swarm-grad)"
-                className="group-hover:translate-y-1 transition-transform duration-500"
-              />
-              {/* Body Stripes (Horizontal Swipes) */}
-              <path d="M38 52 H62 M36 62 H64" stroke="black" strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.6" />
             </svg>
           </div>
           <span className="tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-amber-200">Lovabee</span>
