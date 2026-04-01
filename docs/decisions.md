@@ -42,3 +42,17 @@ The agent was previously failing to initialize or hanging during the bootstrap p
 2.  Set ANTHROPIC_API_KEY: "" to prevent SDK credential discovery conflicts when using OpenRouter.
 3.  Use --bare to skip unnecessary discovery steps in scripted runs, reducing startup time and token usage.
 4.  Implement AbortController timeouts for worker status webhooks to prevent hanging if the endpoint is unresponsive.
+
+## Infrastructure Monetization and Credit Realignment (2026-04-01)
+
+### Decision
+Implemented a two-tier monetization model to account for Daytona infrastructure costs. Added a **100-credit Sandbox Activation Fee** and a **25-credit Infrastructure Overhead** per AI turn.
+
+### Rationale
+Previously, billing only covered AI tokens, whereas the application incurred a $0.1656/hour cost for the Daytona sandboxes. This hybrid fee structure ensures the platform's sustainability by recouping infrastructure "rent" based on both session startup and ongoing activity.
+
+### Plan
+1. Deduct 100 credits in `generate-daytona` whenever a work session is initialized or resumed.
+2. Increment the credit deduction in the `daytona-progress` webhook by 25 credits for every AI-billed message.
+3. Update the minimum credit check from 50 to 150 to ensure a user can cover the activation fee + buffer for the first turn.
+4. Implemented in a separate worktree (`monetization-refactor`) and branch (`feat/monetization`).
