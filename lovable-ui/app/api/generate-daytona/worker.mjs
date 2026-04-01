@@ -137,10 +137,11 @@ async function runOpenHands(cmdPath) {
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
   
-  // Use venv activation if path looks like it's in a venv
+  // Use venv absolute path if it exists
   let command;
   if (cmdPath.includes(".openhands-venv")) {
-    command = `${ROBUST_PATH} && . /home/daytona/.openhands-venv/bin/activate && openhands --headless -t "${escapedPrompt}"`;
+    const absoluteOhPath = "/home/daytona/.openhands-venv/bin/openhands";
+    command = `${ROBUST_PATH} && ${absoluteOhPath} --headless -t "${escapedPrompt}"`;
   } else {
     command = `${ROBUST_PATH} && ${cmdPath} --headless -t "${escapedPrompt}"`;
   }
