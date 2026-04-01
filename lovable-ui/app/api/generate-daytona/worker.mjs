@@ -74,10 +74,10 @@ async function main() {
     if (!isInstalled) {
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
       try { 
-        // Use retry and try pip as well
-        await runCommand("curl --retry 5 --retry-connrefused -LsSf https://astral.sh/uv/install.sh | sh || pip3 install uv --user || pip install uv --user"); 
+        // Force IPv4, add hard timeouts (15s connect, 45s max), and fallback to wget if curl hangs or fails
+        await runCommand("curl -4 --connect-timeout 10 --max-time 45 --retry 3 --retry-connrefused -LsSf https://astral.sh/uv/install.sh | sh || wget -qO- --timeout=45 --tries=3 https://astral.sh/uv/install.sh | sh || (sudo apt-get update && sudo apt-get install -y python3-pip && pip3 install uv --user) || pip install uv --user"); 
       } catch (e) {
-        console.warn("[Worker] uv installation failed, trying direct pip install for OpenHands...");
+        console.warn("[Worker] uv installation failed or timed out, proceeding to check if partial install worked...");
       }
 
       await sendUpdate("progress", { message: "🤖 Installing OpenHands (this may take a minute)..." });
