@@ -255,12 +255,18 @@ function startFriendlyRotation() {
 
 const projectDir = path.join(process.cwd(), "website-project");
 if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+try { execSync("chown -R daytona " + projectDir); } catch (e) {}
 
 async function main() {
   try {
     startFriendlyRotation();
     await sendUpdate("progress", { message: "🚀 Preparing a fresh environment for your project..." });
     console.log("[Worker] Bootstrapping environment...");
+    try {
+      const whoami = execSync("whoami", { encoding: "utf8" }).trim();
+      const uid = execSync("id -u", { encoding: "utf8" }).trim();
+      console.log("[Worker] Running as user: " + whoami + " (uid: " + uid + ")");
+    } catch (e) {}
 
     if (!fs.existsSync("package.json")) {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
@@ -295,6 +301,9 @@ async function main() {
         const out = execSync(npmCmd, { encoding: "utf8" });
         console.log("[Worker] NPM INSTALL OUTPUT:", out);
         
+        // Ensure daytona user owns the newly installed CLI
+        try { execSync("chown -R daytona " + localClaudeDir); } catch (e) {}
+
         if (fs.existsSync(localClaudeBin)) {
           claudeBinary = localClaudeBin;
           console.log("[Worker] Claude CLI installed at:", localClaudeBin);
@@ -404,6 +413,16 @@ async function runClaude(command) {
     actualCmd = parts[0];
     actualArgs = [...parts.slice(1), ...args];
   }
+
+  // Handle root permission security check in Claude CLI
+  try {
+    const uidStr = execSync("id -u", { encoding: "utf8" }).trim();
+    if (uidStr === "0") {
+      console.log("[Worker] Running as root, wrapping command with 'sudo -E -u daytona'");
+      actualArgs = ["-E", "-u", "daytona", actualCmd, ...actualArgs];
+      actualCmd = "sudo";
+    }
+  } catch (e) {}
 
   return new Promise((resolve, reject) => {
     console.log("[Worker] Spawning agent:", actualCmd, actualArgs.join(" "));

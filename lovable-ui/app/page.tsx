@@ -40,7 +40,7 @@ export default function Home() {
       <div className="absolute bottom-40 right-10 w-48 h-48 bg-yellow-500/10 backdrop-blur-3xl animate-blob animation-delay-2000" style={{ clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)' }} />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 sm:px-6 lg:px-8">
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 sm:px-6 lg:px-8 pt-20">
         <div className="max-w-5xl mx-auto text-center">
           
           <div className="mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold tracking-wider">
