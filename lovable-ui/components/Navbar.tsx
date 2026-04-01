@@ -124,9 +124,9 @@ export default function Navbar() {
           href="/"
           className="flex items-center gap-2.5 text-2xl font-bold text-white hover:opacity-90 transition-all group"
         >
-          {/* Reimagined Hexagon Logo: Abstract 'B' Bee */}
+          {/* Reimagined Hexagon Logo: Modern Bee */}
           <div className="relative w-8 h-8 flex items-center justify-center">
-            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_12px_rgba(245,158,11,0.4)]">
+            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]">
               <defs>
                 <linearGradient id="bee-grad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#fcd34d" />
@@ -134,25 +134,39 @@ export default function Navbar() {
                   <stop offset="100%" stopColor="#b45309" />
                 </linearGradient>
               </defs>
-              {/* Main Hexagon Frame */}
+              {/* Outer Hexagon Frame (Softened) */}
               <path 
-                d="M50 2 L93.3 25 L93.3 75 L50 98 L6.7 75 L6.7 25 Z" 
+                d="M50 5 L90 27.5 L90 72.5 L50 95 L10 72.5 L10 27.5 Z" 
                 fill="none" 
                 stroke="url(#bee-grad)" 
-                strokeWidth="4"
-                className="opacity-40"
+                strokeWidth="2"
+                className="opacity-30"
               />
-              {/* The Styled 'B' / Bee Wings */}
+              {/* Bee Body (Striped Hexagon) */}
               <path 
-                d="M50 20 L50 80 M50 20 C75 20 85 35 50 50 C85 65 75 80 50 80" 
+                d="M50 20 L75 35 L75 65 L50 80 L25 65 L25 35 Z" 
+                fill="url(#bee-grad)"
+                className="group-hover:scale-110 transition-transform duration-500"
+              />
+              {/* Bee Stripes (Cutouts) */}
+              <rect x="25" y="42" width="50" height="4" fill="black" fillOpacity="0.8" />
+              <rect x="25" y="54" width="50" height="4" fill="black" fillOpacity="0.8" />
+              
+              {/* The "B" Wings (Sharp, Technical) */}
+              <path 
+                d="M50 35 L85 10 M50 35 L15 10" 
                 stroke="url(#bee-grad)" 
-                strokeWidth="12" 
+                strokeWidth="6" 
                 strokeLinecap="round" 
                 fill="none"
-                className="group-hover:stroke-white transition-colors duration-300"
               />
-              {/* Floating 'Stoker' / Antenna Dot */}
-              <circle cx="50" cy="12" r="5" fill="url(#bee-grad)" className="animate-bounce" style={{ animationDuration: '2s' }} />
+              {/* Stinger */}
+              <path 
+                d="M50 80 L50 92" 
+                stroke="url(#bee-grad)" 
+                strokeWidth="4" 
+                strokeLinecap="round"
+              />
             </svg>
           </div>
           <span className="tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-amber-200">Lovabee</span>
