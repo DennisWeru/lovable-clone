@@ -66,8 +66,20 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
       .single();
 
-    if (!profile || (profile.credits || 0) < 50) {
-      return NextResponse.json({ error: "Insufficient credits: Please top up to continue generation." }, { status: 403 });
+    if (!profile || (profile.credits || 0) < 150) {
+      return NextResponse.json({ error: "Insufficient credits: Please top up to continue generation (Min 150 credits needed)." }, { status: 403 });
+    }
+
+    // --- MONETIZATION: Deduct Platform / Sandbox Activation Fee (100 credits) ---
+    console.log("[API] Deducting 100 credits for work session activation...");
+    const { error: rpcError } = await supabaseAdmin.rpc("decrement_credits", {
+      user_id: userId,
+      amount: 100
+    });
+
+    if (rpcError) {
+      console.error("[API] Failed to deduct activation fee:", rpcError);
+      return NextResponse.json({ error: "Credit deduction failed: Please try again." }, { status: 500 });
     }
 
     // 5. Database Project Record

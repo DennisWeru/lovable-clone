@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
             console.log(`[Billing] Using fallback token estimate for ${metadata.genId}: $${rawCost}`);
           }
 
-          const costInCredits = Math.ceil(Number(rawCost) * 10000);
+          const costInCredits = Math.ceil(Number(rawCost) * 10000) + 25; // Added 25-credit infra overhead
           
           if (costInCredits > 0) {
             // 1. Update project total (Atomic increment using RPC or standard update if column exists)
