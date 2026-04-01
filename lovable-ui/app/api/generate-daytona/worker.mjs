@@ -140,8 +140,10 @@ async function runOpenHands(cmdPath) {
   // Use venv absolute path if it exists
   let command;
   if (cmdPath.includes(".openhands-venv")) {
+    const venvPython = "/home/daytona/.openhands-venv/bin/python3";
     const absoluteOhPath = "/home/daytona/.openhands-venv/bin/openhands";
-    command = `${ROBUST_PATH} && ${absoluteOhPath} --headless -t "${escapedPrompt}"`;
+    // We execute via the venv's python3 explicitly to avoid shebang path issues (Exit 127)
+    command = `${ROBUST_PATH} && ${venvPython} -m openhands.core.main --headless -t "${escapedPrompt}" || ${venvPython} ${absoluteOhPath} --headless -t "${escapedPrompt}"`;
   } else {
     command = `${ROBUST_PATH} && ${cmdPath} --headless -t "${escapedPrompt}"`;
   }
