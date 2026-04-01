@@ -393,4 +393,18 @@ Implemented a dynamic routing structure and a dedicated project creation API:
 ### Rationale
 -   **Clean URLs**: `/generate/:projectId` is more standard for web applications and makes project sharing/resuming more intuitive.
 -   **Separation of Concerns**: Decoupling project creation from the generation logic allows for better state management and a smoother user flow (e.g., creating a project even if the initial generation fails or is delayed).
--   **User Experience**: Users can now refresh the generation page without triggering a "resubmit form" warning or losing the project context.
+
+### 2026-04-01: Fixing OpenHands SDK Conversation Initialization Error
+
+#### Issue Diagnosis
+The OpenHands SDK runner (`agent_runner.py`) crashed with the error: `Agent Error: Conversation.__new__() got an unexpected keyword argument 'sid'`. This happened during the attempt to instantiate the `Conversation` class. In the current OpenHands SDK (v0.12.0+), the `Conversation` class uses a factory pattern and its constructor does not accept `conversation_id` or `sid` as direct keyword arguments.
+
+#### Solution Implementation
+1.  **Factory Pattern Adoption**: Refactored `agent_runner.py` to use `Conversation.create(...)` instead of the `Conversation(...)` constructor.
+2.  **Keyword Mapping**: Changed `conversation_id=sid` to `id=conv_id` to match the expected signature of the `create` method.
+3.  **Sanitization**: Renamed the local variable `sid` to `conv_id` to prevent any potential conflicts with internal SDK logic that might still look for a `sid` attribute in certain contexts.
+4.  **Verification**: Confirmed that the `conv_id` (derived from `OPENHANDS_SID` in the API route) is correctly passed as the `id` for identifying and persisting the conversation state in the `.openhands_state` directory.
+
+#### Rationale
+-   **SDK Stability**: Aligning with the documented factory pattern ensures the agent works across different minor versions of the OpenHands SDK.
+-   **State Persistence**: Identifying the conversation by `id` is crucial for allowing the agent to resume its work if a generation is interrupted or if follow-up prompts are sent to the same project.

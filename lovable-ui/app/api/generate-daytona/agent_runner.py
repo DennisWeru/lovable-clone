@@ -17,7 +17,7 @@ async def main():
     api_key = os.getenv("OPENROUTER_API_KEY")
     base_url = "https://openrouter.ai/api/v1"
     project_dir = os.getenv("OPENHANDS_WORKSPACE_BASE", "/home/daytona/website-project")
-    sid = os.getenv("OPENHANDS_SID")
+    conv_id = os.getenv("OPENHANDS_SID")
 
     if not prompt:
         log_status("No prompt provided", "error")
@@ -44,12 +44,16 @@ async def main():
 
         log_status("Starting conversation loop...")
         
-        # OpenHands SDK allows creating a conversation and running it.
-        # We can pass the project_dir as the workspace.
-        conversation = Conversation(
+        # OpenHands SDK uses persistence_dir and id for state management.
+        persistence_dir = os.path.join(os.path.dirname(project_dir), ".openhands_state")
+        if not os.path.exists(persistence_dir):
+            os.makedirs(persistence_dir, exist_ok=True)
+
+        conversation = Conversation.create(
             agent=agent, 
             workspace=project_dir,
-            sid=sid
+            persistence_dir=persistence_dir,
+            id=conv_id if conv_id else None
         )
 
         # Inject the custom rules if they exist (we created CLAUDE.md in worker.mjs)
