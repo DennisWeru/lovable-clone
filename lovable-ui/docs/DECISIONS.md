@@ -363,3 +363,8 @@ Performed a global cleanup of `worker.mjs` to remove all backslash escapes from 
 
 
 
+
+## Fix Daytona uv Agent Stuck Issue
+
+- Replaced the curl | sh installer with a direct binary download and a fallback to apt-get + pip-installed uv because the inner curl inside astral.sh install.sh would hang indefinitely on IPv6 DNS blackholes in the Daytona container.
+- Removed --python 3.12 from uv venv invocation to prevent uv from attempting standalone python downloads, which is unneeded on Ubuntu 24.04 and could trigger additional network timeouts.

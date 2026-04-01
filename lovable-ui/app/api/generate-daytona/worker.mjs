@@ -83,14 +83,14 @@ async function main() {
 
       await sendUpdate("progress", { message: "🤖 Installing OpenHands (this may take a minute)..." });
       try {
-        // Use a persistent venv for openhands
-        await runCommand("uv venv --python 3.12 /home/daytona/.openhands-venv");
+        // Use a persistent venv for openhands. Avoid --python overrides to prevent uv from downloading standalone python.
+        await runCommand("uv venv /home/daytona/.openhands-venv");
         await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands-ai");
         binaryPath = "/home/daytona/.openhands-venv/bin/openhands";
       } catch (e) {
         console.warn("[Worker] OpenHands installation failed, attempting system-wide fallback...");
         try {
-          await runCommand("uv pip install --system openhands-ai --python 3.12");
+          await runCommand("uv pip install --system openhands-ai");
           binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim();
         } catch (e2) {
           console.warn("[Worker] System installation failed, using 'uv run openhands'");
@@ -144,9 +144,9 @@ async function runOpenHands(cmdPath) {
     const venvPython = "/home/daytona/.openhands-venv/bin/python3";
     const absoluteOhPath = "/home/daytona/.openhands-venv/bin/openhands";
     // We execute via the venv's python3 explicitly to avoid shebang path issues (Exit 127)
-    command = `${ROBUST_PATH} && ${venvPython} -m openhands.core.main --headless -t "${escapedPrompt}" || ${venvPython} ${absoluteOhPath} --headless -t "${escapedPrompt}"`;
+    command = `${ROBUST_PATH} && ${venvPython} -m openhands.core.main --headless --override-with-envs -t "${escapedPrompt}" || ${venvPython} ${absoluteOhPath} --headless --override-with-envs -t "${escapedPrompt}"`;
   } else {
-    command = `${ROBUST_PATH} && ${cmdPath} --headless -t "${escapedPrompt}"`;
+    command = `${ROBUST_PATH} && ${cmdPath} --headless --override-with-envs -t "${escapedPrompt}"`;
   }
 
   console.log(`[Worker] Running Agent with command: ${command}`);
