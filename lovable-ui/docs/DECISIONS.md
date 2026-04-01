@@ -287,3 +287,25 @@ Updated the `lovable-ui/app/api/generate-daytona/route.ts` API route to pass the
 
 ### Rationale
 -   **API Contract**: Aligning the flags passed to `claude-code` via `npx` with the actual expected flags to ensure autonomous, non-interactive environments don't crash from argument parsing errors.
+
+## Fixing Stuck Navbar Skeleton Loader (2026-04-01)
+
+### Problem
+The Navbar would frequently get stuck in a skeleton loader state, particularly for authenticated users. This forced users to manually clear browser data to restore functionality. Investigation revealed that the `isLoading` state was blocked by an `await` on the `fetchCredits` function, which queried the Supabase `profiles` table. If this query took too long or hung, the entire Navbar auth UI remained hidden behind the skeleton placeholder.
+
+### Solution
+Hardened the `Navbar` auth initialization to be non-blocking and self-correcting:
+1.  **Decoupled Credit Fetching**: Removed the `await` from `fetchCredits` calls within the auth lifecycle. The Navbar now transitions from `isLoading: true` to `false` as soon as the `user` object (or null) is returned by Supabase, regardless of whether the credits have finished loading.
+2.  **Safety Timeout**: Added a 4000ms `setTimeout` within the `useEffect` hook that forces `setIsLoading(false)` if the auth check takes too long. This ensures that even in cases of corrupted local storage or network hangs, the user is eventually presented with the login/dashboard buttons.
+3.  **Unified State Clearing**: Ensured that `setIsLoading(false)` is called in all logical branches of `initializeAuth` and the `onAuthStateChange` listener.
+
+### Changes
+-   Modified `lovable-ui/components/Navbar.tsx`:
+    -   Refactored `initializeAuth` and `onAuthStateChange` to remove blocking `await` on credits.
+    -   Implemented a 4-second safety timeout for the loading state.
+    -   Cleaned up `useEffect` dependencies to prevent redundant re-runs.
+
+### Rationale
+-   **User Experience**: A missing credit counter is a minor missing feature, but a missing Login/Dashboard button is a critical "app is broken" failure. Prioritizing the core navigation UI over secondary data (credits) improves perceived reliability.
+-   **Robustness**: The safety timeout addresses the "stuck" state reported by users when Supabase's internal session refresh logic might hang due to browser state issues.
+

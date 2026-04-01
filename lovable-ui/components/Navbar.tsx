@@ -41,21 +41,33 @@ export default function Navbar() {
 
     const initializeAuth = async () => {
       try {
-        const { data, error } = await supabase.auth.getUser();
+        // Get user from Supabase - this may take time if token refresh is needed
+        const { data } = await supabase.auth.getUser();
         if (!isMounted) return;
         
         const currentUser = data?.user ?? null;
         setUser(currentUser);
         
+        // Stop loading as soon as we have a definitive answer about the user, 
+        // don't wait for credits to avoid causing a stuck skeleton loader.
+        setIsLoading(false);
+        
         if (currentUser) {
-          await fetchCredits(currentUser.id);
+          fetchCredits(currentUser.id);
         }
       } catch (e) {
         console.error("Auth init error:", e);
-      } finally {
         if (isMounted) setIsLoading(false);
       }
     };
+
+    // Safety timeout: Ensure the loading skeleton doesn't stay stuck forever 
+    // even if Supabase auth calls hang (e.g. due to corrupted local storage)
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setIsLoading(false);
+      }
+    }, 4000);
 
     initializeAuth();
 
@@ -66,14 +78,14 @@ export default function Navbar() {
         const newUser = session?.user ?? null;
         setUser(newUser);
         
+        // Always stop main loading state when auth state changes
+        setIsLoading(false);
+        
         if (newUser) {
-          await fetchCredits(newUser.id);
+          fetchCredits(newUser.id);
         } else {
           setCredits(null);
         }
-        
-        // Ensure loading is finished on auth state changes as well
-        setIsLoading(false);
       }
     );
 
@@ -93,6 +105,7 @@ export default function Navbar() {
 
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
