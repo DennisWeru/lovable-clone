@@ -14,17 +14,27 @@ from typing import Any, Dict
 def log_status(message: str, type: str = "status"):
     print(json.dumps({"type": type, "message": message}), flush=True)
 
+import uuid
+
 def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str, conv_id: str) -> Conversation:
     """Safely create a conversation by trying multiple known argument patterns."""
     log_status(f"Inspecting Conversation signature: {inspect.signature(Conversation)}", "status")
     
+    conv_uuid = None
+    if conv_id:
+        try:
+            conv_uuid = uuid.UUID(conv_id)
+        except ValueError:
+            # If it's an arbitrary string like 'sid-xyz', generate a deterministic UUID
+            conv_uuid = uuid.uuid5(uuid.NAMESPACE_OID, conv_id)
+
     # 1. Try with id=
     try:
         return Conversation(
             agent=agent, 
             workspace=workspace,
             persistence_dir=persistence_dir,
-            id=conv_id
+            id=conv_uuid
         )
     except TypeError as e:
         log_status(f"Constructor with 'id' failed: {str(e)}", "status")
@@ -35,7 +45,7 @@ def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str,
             agent=agent, 
             workspace=workspace,
             persistence_dir=persistence_dir,
-            conversation_id=conv_id
+            conversation_id=conv_uuid
         )
     except TypeError as e:
         log_status(f"Constructor with 'conversation_id' failed: {str(e)}", "status")

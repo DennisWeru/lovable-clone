@@ -421,4 +421,16 @@ The OpenHands SDK runner (`agent_runner.py`) crashed with the error: `Agent Erro
 
 #### Rationale
 -   **Future-Proofing**: This approach makes the agent runner "blindly compatible" with a wider range of OpenHands SDK versions without requiring manual updates for every upstream minor release.
--   **Improved Debugging**: By logging the class signature directly from the execution environment, we can identify exact API surface changes from the sandbox logs.
+
+### 2026-04-01: Fixing Conversation UUID Type Error
+
+#### Issue Diagnosis
+After locking the `openhands-sdk` to version `1.16.0`, the agent runner failed with `Agent Error: 'str' object has no attribute 'hex'`. The SDK introspection revealed that the `Conversation` factory explicitly expects `conversation_id: uuid.UUID | None` rather than a standard string. Because `worker.mjs` was passing a string environment variable (`OPENHANDS_SID`), the SDK's internal persistence logic crashed when trying to serialize the ID.
+
+#### Solution Implementation
+1. **Runtime Type Casting**: Updated `safe_create_conversation` in `agent_runner.py` to import the standard `uuid` library.
+2. **Deterministic UUID Generation**: Implemented a try-catch block that first attempts to cast the `conv_id` directly to a `uuid.UUID`. If it fails (because the `id` is an arbitrary string like `sid-12345678`), it uses `uuid.uuid5(uuid.NAMESPACE_OID, conv_id)` to generate a valid, deterministic UUID structure based on the string.
+3. **Constructor Injection**: Passed the resulting `conv_uuid` object into the fallback constructors (`id=` and `conversation_id=`).
+
+#### Result
+The `Conversation` factory now receives the exact data type it requires, eliminating the deep internal serialization crash, while simultaneously maintaining a deterministic link to the user's project ID for session resumption.
