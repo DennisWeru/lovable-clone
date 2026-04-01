@@ -66,19 +66,26 @@ async function main() {
   try {
     startFriendlyRotation();
     process.env.PATH = (process.env.HOME || "/home/daytona") + "/.local/bin:" + (process.env.HOME || "/home/daytona") + "/.cargo/bin:" + process.env.PATH;
+    const venvBin = "/home/daytona/.openhands-venv/bin/openhands";
     let binaryPath = "openhands";
     let isInstalled = false;
     try {
-      execSync(`${ROBUST_PATH} && which openhands`, { stdio: "ignore", shell: true });
-      isInstalled = true;
-      console.log("[Worker] OpenHands already available.");
+      if (fs.existsSync(venvBin)) {
+        isInstalled = true;
+        binaryPath = venvBin;
+        console.log("[Worker] OpenHands virtualenv found, skipping installation.");
+      } else {
+        execSync(`${ROBUST_PATH} && which openhands`, { stdio: "ignore", shell: true });
+        isInstalled = true;
+        console.log("[Worker] OpenHands system-wide binary found.");
+      }
     } catch (e) {}
 
     if (!isInstalled) {
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
       try { 
-        // Force IPv4, add hard timeouts to prevent hanging. Download binary directly instead of using the sh script because the script's inner curl commands lack timeouts.
-        const installUvCmd = `mkdir -p ~/.local/bin && ( (curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu) || (sudo apt-get update -y && sudo apt-get install -y python3-pip python3-venv && python3 -m venv ~/.uv-venv && ~/.uv-venv/bin/pip install uv && ln -sf ~/.uv-venv/bin/uv ~/.local/bin/uv) )`;
+        // Force IPv4, add hard timeouts to prevent hanging. Check if uv is already in ~/.local/bin
+        const installUvCmd = `mkdir -p ~/.local/bin && if [ ! -f ~/.local/bin/uv ]; then ( (curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu) || (sudo apt-get update -y && sudo apt-get install -y python3-pip python3-venv && python3 -m venv ~/.uv-venv && ~/.uv-venv/bin/pip install uv && ln -sf ~/.uv-venv/bin/uv ~/.local/bin/uv) ); fi`;
         await runCommand(installUvCmd); 
       } catch (e) {
         console.warn("[Worker] uv installation failed or timed out, proceeding to check if partial install worked...");
@@ -89,7 +96,7 @@ async function main() {
         // Use a persistent venv for openhands. Avoid --python overrides to prevent uv from downloading standalone python.
         await runCommand("uv venv /home/daytona/.openhands-venv");
         await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands");
-        binaryPath = "/home/daytona/.openhands-venv/bin/openhands";
+        binaryPath = venvBin;
       } catch (e) {
         console.warn("[Worker] OpenHands installation failed, attempting system-wide fallback...");
         try {
@@ -131,6 +138,7 @@ async function main() {
 }
 
 async function runOpenHands() {
+  const sid = process.env.OPENHANDS_SID;
   const env = { 
     ...process.env, 
     LLM_API_KEY: OPENROUTER_API_KEY, 
@@ -149,8 +157,9 @@ async function runOpenHands() {
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
   
-  // Use uvx for execution - it handles the vitualenv and binary path automatically
-  const command = `${ROBUST_PATH} && uvx openhands --headless --override-with-envs -t "${escapedPrompt}"`;
+  // Use --resume if we have a SID
+  const resumeFlag = sid ? `--resume ${sid}` : "";
+  const command = `${ROBUST_PATH} && uvx openhands --headless --override-with-envs ${resumeFlag} -t "${escapedPrompt}"`;
 
 
   console.log(`[Worker] Running Agent with command: ${command}`);

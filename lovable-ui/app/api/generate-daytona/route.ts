@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
       SANDBOX_ID: sandboxId,
       PREVIEW_URL: previewUrl,
+      OPENHANDS_SID: `sid-${projectRecord.id.slice(0, 8)}`
     }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
     await sandbox.fs.uploadFile(Buffer.from(envFileContent), "/home/daytona/worker-env.sh");
