@@ -134,8 +134,19 @@ async function runOpenHands(cmdPath) {
     LLM_MODEL: "openrouter/" + MODEL,
     PYTHONUNBUFFERED: "1"
   };
+  
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
-  const command = `${ROBUST_PATH} && ${cmdPath} --headless -t "${escapedPrompt}"`;
+  
+  // Use venv activation if path looks like it's in a venv
+  let command;
+  if (cmdPath.includes(".openhands-venv")) {
+    command = `${ROBUST_PATH} && . /home/daytona/.openhands-venv/bin/activate && openhands --headless -t "${escapedPrompt}"`;
+  } else {
+    command = `${ROBUST_PATH} && ${cmdPath} --headless -t "${escapedPrompt}"`;
+  }
+
+  console.log(`[Worker] Running Agent with command: ${command}`);
+
   return new Promise((resolve, reject) => {
     const cp = spawn("/bin/sh", ["-c", command], { env, cwd: projectDir, stdio: ["ignore", "pipe", "pipe"] });
     cp.stdout.on("data", (data) => {
@@ -146,7 +157,10 @@ async function runOpenHands(cmdPath) {
       if (lower.includes("thought")) sendUpdate("progress", { message: "Agent thinking..." });
     });
     cp.stderr.on("data", (data) => { process.stderr.write(data.toString()); });
-    cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Agent exit ${code}`)));
+    cp.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Agent exit ${code}. Check logs for details.`));
+    });
   });
 }
 
