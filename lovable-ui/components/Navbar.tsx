@@ -124,49 +124,45 @@ export default function Navbar() {
           href="/"
           className="flex items-center gap-2.5 text-2xl font-bold text-white hover:opacity-90 transition-all group"
         >
-          {/* Reimagined Hexagon Logo: Modern Bee */}
+          {/* Reimagined Hexagon Logo: Geometric Swarm Icon */}
           <div className="relative w-8 h-8 flex items-center justify-center">
             <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]">
               <defs>
-                <linearGradient id="bee-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <linearGradient id="swarm-grad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#fcd34d" />
                   <stop offset="50%" stopColor="#f59e0b" />
-                  <stop offset="100%" stopColor="#b45309" />
+                  <stop offset="100%" stopColor="#d97706" />
                 </linearGradient>
               </defs>
-              {/* Outer Hexagon Frame (Softened) */}
+              {/* Bold Hexagon Border */}
               <path 
-                d="M50 5 L90 27.5 L90 72.5 L50 95 L10 72.5 L10 27.5 Z" 
+                d="M50 5 L92 28 L92 72 L50 95 L8 72 L8 28 Z" 
                 fill="none" 
-                stroke="url(#bee-grad)" 
-                strokeWidth="2"
-                className="opacity-30"
+                stroke="url(#swarm-grad)" 
+                strokeWidth="6"
+                strokeLinejoin="round"
+                className="opacity-20"
               />
-              {/* Bee Body (Striped Hexagon) */}
+              {/* The "V" Wings (High-Tech & Action-Oriented) */}
               <path 
-                d="M50 20 L75 35 L75 65 L50 80 L25 65 L25 35 Z" 
-                fill="url(#bee-grad)"
-                className="group-hover:scale-110 transition-transform duration-500"
-              />
-              {/* Bee Stripes (Cutouts) */}
-              <rect x="25" y="42" width="50" height="4" fill="black" fillOpacity="0.8" />
-              <rect x="25" y="54" width="50" height="4" fill="black" fillOpacity="0.8" />
-              
-              {/* The "B" Wings (Sharp, Technical) */}
-              <path 
-                d="M50 35 L85 10 M50 35 L15 10" 
-                stroke="url(#bee-grad)" 
-                strokeWidth="6" 
+                d="M50 45 L85 15 M50 45 L15 15" 
+                stroke="url(#swarm-grad)" 
+                strokeWidth="10" 
                 strokeLinecap="round" 
                 fill="none"
               />
-              {/* Stinger */}
+              {/* The Central Honeycomb Column / Body */}
               <path 
-                d="M50 80 L50 92" 
-                stroke="url(#bee-grad)" 
-                strokeWidth="4" 
-                strokeLinecap="round"
+                d="M50 40 
+                   C60 40 65 50 65 60 
+                   C65 75 50 85 50 85 
+                   C50 85 35 75 35 60 
+                   C35 50 40 40 50 40 Z" 
+                fill="url(#swarm-grad)"
+                className="group-hover:translate-y-1 transition-transform duration-500"
               />
+              {/* Body Stripes (Horizontal Swipes) */}
+              <path d="M38 52 H62 M36 62 H64" stroke="black" strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.6" />
             </svg>
           </div>
           <span className="tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-amber-200">Lovabee</span>
