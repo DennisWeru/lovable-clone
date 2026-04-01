@@ -192,7 +192,7 @@ console.log("[Worker] Agent process started (Claude Code Mode).");
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
-const MODEL = process.env.GENERATION_MODEL || "anthropic/claude-3.5-sonnet-latest";
+const MODEL = process.env.GENERATION_MODEL || "google/gemini-3.1-flash-lite-preview";
 const PROJECT_ID = process.env.PROJECT_ID || "";
 const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
@@ -465,7 +465,7 @@ main();
 
     const envFileContent = Object.entries({
       GENERATION_PROMPT: prompt,
-      GENERATION_MODEL: model || "openai/gpt-4o-2024-08-06",
+      GENERATION_MODEL: model || "google/gemini-3.1-flash-lite-preview",
       PROJECT_ID: projectRecord.id,
       WEBHOOK_TOKEN: webhookToken,
       WEBHOOK_URL: webhookUrl,
