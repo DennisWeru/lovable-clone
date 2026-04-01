@@ -82,17 +82,19 @@ async function main() {
 
       await sendUpdate("progress", { message: "🤖 Installing OpenHands (this may take a minute)..." });
       try {
-        await runCommand("uv pip install --system openhands-ai || uv pip install --user openhands-ai || pip3 install openhands-ai --user || pip install openhands-ai --user");
+        // Use a persistent venv for openhands
+        await runCommand("uv venv --python 3.12 /home/daytona/.openhands-venv");
+        await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands-ai");
+        binaryPath = "/home/daytona/.openhands-venv/bin/openhands";
       } catch (e) {
-        console.warn("[Worker] OpenHands installation failed via all methods:", e.message);
-        // If we still can't install, we try one last ditch effort assuming uv might have worked partially
-        try { await runCommand("uv run pip install openhands-ai"); } catch (e2) {}
-      }
-      
-      try { 
-        binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim(); 
-      } catch (e) { 
-        binaryPath = "uv run openhands"; 
+        console.warn("[Worker] OpenHands installation failed, attempting system-wide fallback...");
+        try {
+          await runCommand("uv pip install --system openhands-ai --python 3.12");
+          binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim();
+        } catch (e2) {
+          console.warn("[Worker] System installation failed, using 'uv run openhands'");
+          binaryPath = "uv run openhands";
+        }
       }
     }
 
