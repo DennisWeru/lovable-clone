@@ -134,8 +134,8 @@ async function runOpenHands(cmdPath) {
     LLM_BASE_URL: "https://openrouter.ai/api/v1", 
     LLM_MODEL: "openrouter/" + MODEL,
     PYTHONUNBUFFERED: "1",
-    RUNTIME: "process",
-    SANDBOX_RUNTIME: "process",
+    RUNTIME: "local",
+    SANDBOX_RUNTIME: "local",
     SANDBOX_LOCAL: "true",
     WORKSPACE_BASE: projectDir
   };
