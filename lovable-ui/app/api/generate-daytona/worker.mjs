@@ -117,10 +117,11 @@ async function main() {
     const rules = [
       "# Lovabee Agent Rules",
       "- Tech: React, Vite, Tailwind CSS",
-      "- Style: Premium, modern aesthetics (rich gradients, Inter font, glassmorphism)",
-      "- Architecture: Feature-based structure",
-      "- Port: 3000 (Required for preview)",
-      "- Note: Always use Lucide React for icons."
+      "- STYLE: ALWAYS use Vite for new projects. DO NOT use create-react-app.",
+      "- WORKSPACE: Always initialize the project in the CURRENT directory (`./`).",
+      "- Tech Structure: Use Lucide React for icons.",
+      "- Styling: Premium modern aesthetics (gradients, glassmorphism, Inter font).",
+      "- Port: 3000 (Required for preview)."
     ].join("\n");
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
 

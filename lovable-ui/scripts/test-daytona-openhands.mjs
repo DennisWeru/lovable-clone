@@ -49,45 +49,57 @@ async function runTest() {
     const remoteWorkerPath = "/home/daytona/generation-worker.mjs";
     await sandbox.fs.uploadFile(Buffer.from(workerContent), remoteWorkerPath);
 
+    // Upload Python SDK runner
+    const runnerPath = path.join(__dirname, "../app/api/generate-daytona/agent_runner.py");
+    const runnerContent = fs.readFileSync(runnerPath, "utf8");
+    await sandbox.fs.uploadFile(Buffer.from(runnerContent), "/home/daytona/agent_runner.py");
+
     console.log("📤 Uploading test environment...");
-    const testPrompt = "Create a simple landing page for a coffee shop with a hero section and a menu.";
+    const testPrompt = "Generate a modern landing page for a coffee shop in the current directory. Use `npm create vite@latest . -- --template react --no-interactive` to start. Ensure you use Tailwind CSS, Lucide React icons, and follow the premium aesthetic rules in CLAUDE.md.";
     const envFileContent = Object.entries({
       GENERATION_PROMPT: testPrompt,
       GENERATION_MODEL: "google/gemini-2.0-flash-001",
       PROJECT_ID: "test-project-" + Date.now(),
       WEBHOOK_TOKEN: "test-token",
-      WEBHOOK_URL: "", // No webhook for local test
+      WEBHOOK_URL: "", 
       OPENROUTER_API_KEY: OPENROUTER_API_KEY || "",
       SANDBOX_ID: sandbox.id,
       PREVIEW_URL: `https://${sandbox.id}.daytona.app`,
-    }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
+      GAI_STRATEGY: "inet",
+      PYTHONUNBUFFERED: "1"
+    }).map(([k, v]) => {
+      // Escape backticks and dollar signs for bash double quotes
+      const escapedValue = JSON.stringify(v).replace(/`/g, "\\`").replace(/\$/g, "\\$");
+      return `export ${k}=${escapedValue}`;
+    }).join("\n");
 
     await sandbox.fs.uploadFile(Buffer.from(envFileContent), "/home/daytona/worker-env.sh");
 
-    console.log("🐝 Executing OpenHands worker in sandbox...");
+    console.log("🐝 Executing OpenHands worker in sandbox (Streaming Logs)...");
     
-    // Execute and wait for result
-    const result = await sandbox.process.executeCommand(
-      `source /home/daytona/worker-env.sh && node ${remoteWorkerPath}`,
-      "/home/daytona",
-      undefined,
-      1200000 // 20 minute timeout for installation
-    );
+    // Create PTY for real-time log streaming
+    const ptyHandle = await sandbox.process.createPty({
+      id: "test-session-" + Date.now(),
+      cwd: "/home/daytona",
+      cols: 120,
+      rows: 40,
+      onData: (data) => {
+        process.stdout.write(new TextDecoder().decode(data));
+      },
+    });
 
-    console.log("\n--- SANDBOX OUTPUT ---");
-    console.log(result.result || "No output");
-    console.log("--- END OUTPUT ---\n");
+    await ptyHandle.waitForConnection();
+    await ptyHandle.sendInput(`source /home/daytona/worker-env.sh && node ${remoteWorkerPath}\n`);
+
+    // Wait for the process to complete
+    const result = await ptyHandle.wait();
+
+    console.log("\n--- EXECUTION FINISHED ---");
 
     if (result.exitCode === 0) {
       console.log("✨ SUCCESS! OpenHands completed successfully.");
     } else {
       console.error(`❌ FAILED! Worker exited with code ${result.exitCode}`);
-      // Try to read the logs if it failed
-      try {
-        const logs = await sandbox.process.executeCommand("cat /home/daytona/worker.log", "/home/daytona");
-        console.log("\n--- WORKER.LOG ---");
-        console.log(logs.result);
-      } catch (e) {}
     }
 
   } catch (error) {

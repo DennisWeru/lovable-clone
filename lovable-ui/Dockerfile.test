@@ -1,0 +1,33 @@
+# Docker Parity Test for OpenHands Agent
+# Matches the Daytona sandbox image: mcr.microsoft.com/playwright:v1.49.0-noble
+
+FROM mcr.microsoft.com/playwright:v1.49.0-noble
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-venv \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Setup workspace
+WORKDIR /home/daytona
+RUN mkdir -p website-project
+
+# Pre-install OpenHands in a virtual environment
+RUN uv venv /home/daytona/.openhands-venv
+RUN . /home/daytona/.openhands-venv/bin/activate && uv pip install openhands
+
+# Copy the agent runner and worker (will be mounted in actual run, but good to have)
+# COPY lovable-clone/lovable-ui/app/api/generate-daytona/agent_runner.py /home/daytona/agent_runner.py
+
+ENTRYPOINT ["/bin/bash"]
