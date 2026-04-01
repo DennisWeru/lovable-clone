@@ -28,3 +28,17 @@ The agent was previously struggling with project initialization and had no prede
 1.  Update the worker's `systemMessage` with specific instructions for React/Vite initialization and Tailwind setup.
 2.  Add strict rules to avoid common tool-calling errors (like using leading colons in shell commands).
 3.  Instruct the agent to prioritize high-end design aesthetics in its creations.
+
+## Hardening Claude Code Initialization in Sandbox (2026-04-01)
+
+### Decision
+Refined the Claude Code CLI (agentic mode) environment and bootstrap process in the Daytona sandbox. Added specific OpenRouter authentication patterns (ANTHROPIC_API_KEY="" and ANTHROPIC_AUTH_TOKEN) and optimized the CLI flags (--bare).
+
+### Rationale
+The agent was previously failing to initialize or hanging during the bootstrap phase because of authentication conflicts between its internal SDK settings and the OpenRouter overrides. Additionally, excessive conversational noise was avoided by using --bare mode, which helps stay within token limits.
+
+### Plan
+1.  Initialize a dedicated package.json in /home/daytona/.claude to isolate the CLI environment.
+2.  Set ANTHROPIC_API_KEY: "" to prevent SDK credential discovery conflicts when using OpenRouter.
+3.  Use --bare to skip unnecessary discovery steps in scripted runs, reducing startup time and token usage.
+4.  Implement AbortController timeouts for worker status webhooks to prevent hanging if the endpoint is unresponsive.
