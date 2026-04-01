@@ -124,19 +124,30 @@ export default function Navbar() {
           href="/"
           className="flex items-center gap-2.5 text-2xl font-bold text-white hover:opacity-90 transition-all group"
         >
-          {/* Minimalist Hexagon Logo */}
-          <div className="relative w-8 h-8 flex items-center justify-center">
-            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+          {/* Two Honeycombs Logo */}
+          <div className="relative w-9 h-9 flex items-center justify-center">
+            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_12px_rgba(245,158,11,0.4)]">
               <defs>
-                <linearGradient id="hex-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#fcd34d" />
+                <linearGradient id="honey-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#fbbf24" />
                   <stop offset="100%" stopColor="#d97706" />
                 </linearGradient>
               </defs>
+              {/* Secondary (Back) Hexagon */}
               <path 
-                d="M50 5 L92 28 L92 72 L50 95 L8 72 L8 28 Z" 
-                fill="url(#hex-grad)" 
-                className="group-hover:scale-110 transition-transform duration-500"
+                d="M30 25 L65 45 L65 85 L30 105 L-5 85 L-5 45 Z" 
+                fill="none" 
+                stroke="url(#honey-grad)" 
+                strokeWidth="4"
+                className="opacity-40 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform duration-500"
+                transform="scale(0.8) translate(15, 10)"
+              />
+              {/* Primary (Front) Hexagon */}
+              <path 
+                d="M50 5 L90 28 L90 72 L50 95 L10 72 L10 28 Z" 
+                fill="url(#honey-grad)" 
+                className="group-hover:scale-105 transition-transform duration-300"
+                transform="scale(0.8) translate(10, 5)"
               />
             </svg>
           </div>
