@@ -415,7 +415,7 @@ The OpenHands SDK runner (`agent_runner.py`) crashed with the error: `Agent Erro
 2.  **Signature Inconsistency**: The initialization of the `Conversation` factory is highly version-dependent within the OpenHands ecosystem, frequently toggling between keyword argument names like `id`, `conversation_id`, and `sid`.
 
 #### Solution Implementation
-1.  **Package Correction**: Updated `worker.mjs` to target `openhands-sdk` and `openhands-tools` directly.
+1.  **Package Correction**: Updated `worker.mjs` to target `openhands-sdk==1.16.0` and `openhands-tools` directly.
 2.  **Robust In-Process Introspection**: Refactored `agent_runner.py` to use a `safe_create_conversation` pattern. This helper function uses `inspect.signature` to log the exact constructor requirements for later debugging and proactively retries multiple initialization patterns (with `id`, then `conversation_id`, then finally fallback to a minimal signature).
 3.  **Namespace Clarity**: Unified all references to the session/conversation ID under the `conv_id` variable to prevent any accidental collision with the Python `id` keyword or the legacy `sid` argument name.
 
