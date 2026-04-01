@@ -124,32 +124,38 @@ export default function Navbar() {
           href="/"
           className="flex items-center gap-2.5 text-2xl font-bold text-white hover:opacity-90 transition-all group"
         >
-          {/* Enhanced Hexagon Logo */}
+          {/* Reimagined Hexagon Logo: Abstract 'B' Bee */}
           <div className="relative w-8 h-8 flex items-center justify-center">
-            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]">
+            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_12px_rgba(245,158,11,0.4)]">
               <defs>
-                <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#fbbf24" />
+                <linearGradient id="bee-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#fcd34d" />
                   <stop offset="50%" stopColor="#f59e0b" />
-                  <stop offset="100%" stopColor="#ea580c" />
+                  <stop offset="100%" stopColor="#b45309" />
                 </linearGradient>
               </defs>
+              {/* Main Hexagon Frame */}
               <path 
-                d="M50 5 L90 27.5 L90 72.5 L50 95 L10 72.5 L10 27.5 Z" 
+                d="M50 2 L93.3 25 L93.3 75 L50 98 L6.7 75 L6.7 25 Z" 
                 fill="none" 
-                stroke="url(#logo-grad)" 
-                strokeWidth="8"
-                className="group-hover:stroke-white transition-colors duration-500"
+                stroke="url(#bee-grad)" 
+                strokeWidth="4"
+                className="opacity-40"
               />
+              {/* The Styled 'B' / Bee Wings */}
               <path 
-                d="M50 25 L72 37.5 L72 62.5 L50 75 L28 62.5 L28 37.5 Z" 
-                fill="url(#logo-grad)"
-                className="animate-pulse-slow"
+                d="M50 20 L50 80 M50 20 C75 20 85 35 50 50 C85 65 75 80 50 80" 
+                stroke="url(#bee-grad)" 
+                strokeWidth="12" 
+                strokeLinecap="round" 
+                fill="none"
+                className="group-hover:stroke-white transition-colors duration-300"
               />
-              <circle cx="50" cy="50" r="6" fill="black" />
+              {/* Floating 'Stoker' / Antenna Dot */}
+              <circle cx="50" cy="12" r="5" fill="url(#bee-grad)" className="animate-bounce" style={{ animationDuration: '2s' }} />
             </svg>
           </div>
-          <span className="tracking-tight">Lovabee</span>
+          <span className="tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-amber-200">Lovabee</span>
         </a>
 
         <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
