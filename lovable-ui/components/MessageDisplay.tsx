@@ -85,7 +85,7 @@ export default function MessageDisplay({ messages }: MessageDisplayProps) {
               return (
                 <div key={index} className="animate-fadeIn">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
                     <span className="font-mono">
                       {toolName === 'Write' && input?.file_path && 
                         `Creating ${input.file_path.split('/').pop()}`}

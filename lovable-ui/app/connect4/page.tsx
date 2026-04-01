@@ -126,14 +126,14 @@ export default function Connect4() {
         )}
       </div>
 
-      <div className="bg-blue-600 p-4 rounded-xl shadow-2xl">
+      <div className="bg-amber-600 p-4 rounded-xl shadow-2xl">
         <div className="grid grid-cols-7 gap-2">
           {board.map((row, rowIndex) => 
             row.map((cell, colIndex) => (
               <button
                 key={`${rowIndex}-${colIndex}`}
                 onClick={() => dropPiece(colIndex)}
-                className="w-16 h-16 bg-blue-800 rounded-full relative overflow-hidden hover:bg-blue-700 transition-colors"
+                className="w-16 h-16 bg-amber-800 rounded-full relative overflow-hidden hover:bg-amber-700 transition-colors"
                 disabled={winner !== null || isDraw}
               >
                 <div
@@ -142,7 +142,7 @@ export default function Connect4() {
                       ? "bg-red-500 shadow-inner"
                       : cell === PLAYER2
                       ? "bg-yellow-400 shadow-inner"
-                      : "bg-blue-900"
+                      : "bg-amber-900"
                   }`}
                 />
               </button>
@@ -160,9 +160,9 @@ export default function Connect4() {
 
       <a
         href="/"
-        className="mt-4 text-blue-300 hover:text-blue-400 transition-colors"
+        className="mt-4 text-amber-300 hover:text-amber-400 transition-colors"
       >
-        ← Back to Lovable UI
+        ← Back to Lovabee
       </a>
     </div>
   );

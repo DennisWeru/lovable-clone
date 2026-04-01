@@ -34,10 +34,10 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center">
           {/* Hero Section */}
           <h1 className="text-4xl sm:text-4xl md:text-4xl font-bold text-white mb-6 mt-16">
-            Build something with Lovable-clone
+            Build something with Lovabee
           </h1>
           <h3 className="text-xl sm:text-xl text-gray-300 mb-4 max-w-2xl mx-auto">
-            BUILT WITH AI & DAYTONA
+            POWERED BY AI & DAYTONA
           </h3>
 
           <p className="text-lg sm:text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
@@ -58,7 +58,7 @@ export default function Home() {
             <div className="relative flex items-center bg-black rounded-2xl border border-gray-800 shadow-2xl px-2">
               {/* Textarea */}
               <textarea
-                placeholder="Ask Lovable to create a prototype..."
+                placeholder="Ask Lovabee to create a prototype..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {

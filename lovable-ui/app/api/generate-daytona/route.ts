@@ -200,23 +200,23 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const CONTEXT7_API_KEY = process.env.CONTEXT7_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
 const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
-const SITE_URL = process.env.SITE_URL || "https://lovable-clone.vercel.app";
+const SITE_URL = process.env.SITE_URL || "https://lovabee.vercel.app";
 
 const FRIENDLY_MESSAGES = [
-  "Analyzing your request and planning the best approach...",
+  "Analyzing your request and planning the best approach... 🐝",
   "Designing a modern, responsive layout for your app...",
-  "Fine-tuning the UI components for a premium feel...",
+  "Fine-tuning the UI components for a premium feel... 🍯",
   "Setting up the project structure and dependencies...",
-  "Implementing your custom features with Claude's assistance...",
+  "Implementing your custom features with Lovabee's assistance...",
   "Almost there! Polishing the final details...",
   "This is going to look great! 🌟",
   "Optimizing performance and ensuring smooth transitions...",
-  "Crafting a beautiful color palette for your design...",
+  "Crafting a beautiful color palette for your design... 🌻",
   "Ensuring mobile responsiveness and cross-device compatibility...",
   "Applying best practices for clean, maintainable code...",
   "Adding subtle micro-animations for an enhanced experience...",
   "Still working on it! Building complex features takes a moment...",
-  "The agent is currently busy writing high-quality code..."
+  "The Lovabee agent is currently busy writing high-quality code..."
 ];
 
 let lastUpdateAt = Date.now();
@@ -398,7 +398,7 @@ async function main() {
 }
 
 async function runClaude(command) {
-  await sendUpdate("progress", { message: "🤖 Lovable Agent is thinking about your project..." });
+  await sendUpdate("progress", { message: "🤖 Lovabee Agent is thinking about your project..." });
   
   const env = {
     ...process.env,
@@ -498,7 +498,7 @@ main();
 
     // Force HTTPS on Vercel unless explicitly localhost
     let protocol = "https";
-    const host = req.headers.get("host") || "lovable-clone.vercel.app";
+    const host = req.headers.get("host") || "lovabee.vercel.app";
     if (host.includes("localhost") || host.includes("127.0.0.1")) {
       protocol = "http";
     }

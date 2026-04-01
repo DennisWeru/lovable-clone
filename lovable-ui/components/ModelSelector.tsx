@@ -95,7 +95,7 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps) {
               placeholder="Search models..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-black border border-gray-700 text-white text-xs rounded p-2 focus:outline-none focus:border-blue-500"
+              className="w-full bg-black border border-gray-700 text-white text-xs rounded p-2 focus:outline-none focus:border-amber-500"
               autoFocus
             />
           </div>
@@ -110,11 +110,11 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps) {
                     setSearch("");
                   }}
                   className={`w-full text-left px-4 py-2 hover:bg-gray-800 transition-colors border-b border-gray-800 last:border-0 ${
-                    value === model.id ? "bg-blue-600/10" : ""
+                    value === model.id ? "bg-amber-600/10" : ""
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`text-xs font-medium ${value === model.id ? "text-blue-400" : "text-gray-200"}`}>
+                    <span className={`text-xs font-medium ${value === model.id ? "text-amber-400" : "text-gray-200"}`}>
                       {model.name}
                     </span>
                     {model.context_length && (

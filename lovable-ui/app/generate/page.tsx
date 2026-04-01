@@ -287,8 +287,8 @@ function GenerateContent() {
     const userMessage = inputValue;
     setInputValue("");
     
-    // Add user message to UI (optional, since Lovable will reply)
-    // Actually, Lovable replies with progress messages
+    // Add user message to UI (optional, since Lovabee will reply)
+    // Actually, Lovabee replies with progress messages
     
     generateWebsite(userMessage);
   };
@@ -541,16 +541,16 @@ function GenerateContent() {
           <div className="p-4 border-b border-gray-800 flex items-center justify-between">
             <div>
               <h2 className="text-white font-semibold flex items-center gap-2">
-                Lovable
+                Lovabee
                 {isGenerating && (
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 )}
               </h2>
               <p className="text-gray-400 text-xs mt-1 truncate max-w-[200px]">{prompt}</p>
             </div>
             <button 
               onClick={() => setShowConsole(!showConsole)}
-              className={`p-1.5 rounded-md border transition-colors ${showConsole ? 'bg-blue-600/20 border-blue-500/50 text-blue-400' : 'border-gray-800 text-gray-400 hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md border transition-colors ${showConsole ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'border-gray-800 text-gray-400 hover:text-gray-300'}`}
               title="Toggle Agent Console"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -581,8 +581,8 @@ function GenerateContent() {
 
                 {message.type === "user" && (
                   <div className="flex justify-end">
-                    <div className="bg-blue-600/20 border border-blue-500/30 rounded-lg p-3 max-w-[85%]">
-                      <p className="text-blue-100 text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                    <div className="bg-amber-600/20 border border-amber-500/30 rounded-lg p-3 max-w-[85%]">
+                      <p className="text-amber-100 text-sm whitespace-pre-wrap break-words">{message.content}</p>
                     </div>
                   </div>
                 )}
@@ -590,10 +590,10 @@ function GenerateContent() {
                 {message.type === "claude_message" && (
                   <div className="bg-gray-900 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs">L</span>
+                      <div className="w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center">
+                        <span className="text-black font-bold text-xs">B</span>
                       </div>
-                      <span className="text-white font-medium">Lovable</span>
+                      <span className="text-white font-medium">Lovabee</span>
                       {message.isHistory && (
                         <span className="text-xs text-gray-600 ml-auto">history</span>
                       )}
@@ -604,7 +604,7 @@ function GenerateContent() {
                 
                 {message.type === "tool_use" && (
                   <div className="flex items-start gap-3 group">
-                    <div className="w-8 h-8 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <div className="w-8 h-8 rounded-full bg-amber-600/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <span className="text-sm">{getToolIcon(message.name || "")}</span>
                     </div>
                     <div className="flex-1 space-y-1">
@@ -629,7 +629,7 @@ function GenerateContent() {
                 
                 {message.type === "progress" && (
                   <div className="flex items-center gap-3 py-1">
-                    <div className="w-2 h-2 rounded-full bg-blue-500/50 animate-pulse ml-3" />
+                    <div className="w-2 h-2 rounded-full bg-amber-500/50 animate-pulse ml-3" />
                     <div className="text-gray-400 text-xs font-medium italic">
                       {message.content === "Agent active with tools..." ? "Developing your website..." : (message.content || message.message)}
                     </div>
@@ -639,13 +639,13 @@ function GenerateContent() {
             ))}
             
             {isGenerating && (
-              <div className="flex items-center gap-3 p-3 bg-blue-600/5 rounded-lg border border-blue-500/10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <div className="flex items-center gap-3 p-3 bg-amber-600/5 rounded-lg border border-amber-500/10 animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <div className="relative">
-                  <div className="w-5 h-5 rounded-full border-2 border-blue-500/20" />
-                  <div className="absolute inset-0 w-5 h-5 rounded-full border-2 border-t-blue-500 animate-spin" />
+                  <div className="w-5 h-5 rounded-full border-2 border-amber-500/20" />
+                  <div className="absolute inset-0 w-5 h-5 rounded-full border-2 border-t-amber-500 animate-spin" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-blue-400 text-xs font-semibold uppercase tracking-wider mb-0.5">Current Activity</p>
+                  <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-0.5">Current Activity</p>
                   <p className="text-gray-300 text-sm truncate">
                     {(() => {
                       const lastTool = [...messages].reverse().find(m => m.type === "tool_use");
@@ -686,7 +686,7 @@ function GenerateContent() {
                   {getFriendlyError(error).canRestart && (
                     <button
                       onClick={handleRestartServer}
-                      className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/40 text-blue-200 text-xs rounded-md border border-blue-500/30 transition-colors"
+                      className="px-3 py-1.5 bg-amber-600/30 hover:bg-amber-600/40 text-amber-200 text-xs rounded-md border border-amber-500/30 transition-colors"
                     >
                       ⚡ Restart Server
                     </button>
@@ -713,7 +713,7 @@ function GenerateContent() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask Lovable..."
+                placeholder="Ask Lovabee..."
                 className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg border border-gray-800 focus:outline-none focus:border-gray-700 disabled:opacity-50"
                 disabled={isGenerating}
               />
@@ -802,8 +802,8 @@ function GenerateContent() {
             <div className="h-full flex flex-col">
               <div className="px-4 py-2 bg-gray-950 border-b border-gray-800 flex items-center justify-between sticky top-0">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500" />
-                  <span className="text-xs font-mono text-blue-400 font-bold uppercase tracking-wider">Agent Console Logs</span>
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider">Agent Console Logs</span>
                 </div>
                 <button onClick={() => setShowConsole(false)} className="text-gray-500 hover:text-white transition-colors">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -815,8 +815,8 @@ function GenerateContent() {
                 {logs ? (
                   logs.split('\n').map((line, i) => (
                     <div key={i} className={`break-words ${
-                      line.includes('[Worker]') ? 'text-blue-300' : 
-                      line.includes('[Tool Call]') ? 'text-purple-300' : 
+                      line.includes('[Worker]') ? 'text-amber-300' : 
+                      line.includes('[Tool Call]') ? 'text-amber-300' : 
                       line.includes('[Tool Result]') ? 'text-green-400/80' : 
                       line.includes('[Thought]') ? 'text-amber-200/90 italic' : 
                       line.includes('[Usage]') ? 'text-slate-500 text-[10px]' : 
@@ -860,12 +860,12 @@ function GenerateContent() {
                   value={githubToken}
                   onChange={(e) => setGithubToken(e.target.value)}
                   placeholder="ghp_xxxxxxxxxxxx"
-                  className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
                   required
                 />
                 <p className="text-[10px] text-gray-500">
-                  Required scopes: <code className="text-blue-400/80">repo</code>. 
-                  <a href="https://github.com/settings/tokens" target="_blank" className="text-blue-500 hover:underline ml-1">Create one here</a>
+                  Required scopes: <code className="text-amber-400/80">repo</code>. 
+                  <a href="https://github.com/settings/tokens" target="_blank" className="text-amber-500 hover:underline ml-1">Create one here</a>
                 </p>
               </div>
 
@@ -876,7 +876,7 @@ function GenerateContent() {
                   value={repoName}
                   onChange={(e) => setRepoName(e.target.value)}
                   placeholder="my-awesome-project"
-                  className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
                   required
                 />
               </div>
@@ -893,7 +893,7 @@ function GenerateContent() {
                   <a 
                     href={exportUrl} 
                     target="_blank" 
-                    className="flex items-center gap-2 text-blue-400 hover:text-blue-300 text-xs font-mono break-all"
+                    className="flex items-center gap-2 text-amber-400 hover:text-amber-300 text-xs font-mono break-all"
                   >
                     {exportUrl}
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -915,7 +915,7 @@ function GenerateContent() {
                 <button
                   type="submit"
                   disabled={isExporting || !githubToken || !repoName}
-                  className="flex-[2] px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                  className="flex-[2] px-4 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-600/50 text-white rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
                 >
                   {isExporting ? (
                     <>

@@ -255,4 +255,24 @@ The agent was consistently defaulting to Anthropic Claude models (specifically S
 ### Rationale
 - **Model Control**: Without the `--model` flag, specialized CLI agents like `claude-code` will fall back to their internal defaults (typically Sonnet 3.5), ignoring global environment variables.
 - **Robustness**: Defining the `args` variable ensures the agent receives its instructions and can execute autonomously without manual intervention.
-- **Predictability**: Using the `/v1` suffix and explicit model markers minimizes the chance of OpenRouter's "auto-fallback" logic kicking in unexpectedly.
+
+## Product Rebrand: Lovabee (2026-04-01)
+
+### Problem
+The application was using placeholder names like "Lovable Clone", "Lovable", and "Lovaclone" throughout the codebase, which lacked brand identity and a cohesive product vision.
+
+### Solution
+Executed a comprehensive global rebranding to **Lovabee**.
+
+### Changes
+1. **Brand Identity**: Replaced all user-facing names ("Lovable", "Lovable Clone") with "Lovabee" across all pages, including the `Navbar`, `Hero Section` in `app/page.tsx`, and the generation page headers.
+2. **Metadata**: Updated the site's default HTML title tag in `app/layout.tsx` to reflect the new brand for better SEO and tab identification.
+3. **Agent Persona**: Updated the internal backend agent (`generate-daytona/route.ts`) to adopt the Lovabee persona in its real-time progress updates ("Lovabee Agent is thinking...").
+4. **Third-Party Integrations**: Updated the GitHub export configuration so that commits are made by "Lovabee Agent" and the default export descriptions highlight the "Lovabee" tool.
+5. **System Configuration**: Updated the root `package.json` package name and internal domain references (like `SITE_URL`) to use `lovabee.vercel.app` formatting.
+6. **Design Language**: Upgraded the generic blue/purple UI palette to a thematic 'Amber & Yellow' palette. Changed the avatar to a black 'B' on amber, and reshaped the gradient logo into a hexagon.
+
+### Rationale
+- **Product Legitimacy**: Establishing a unique name helps transition a project from a "clone" into a standalone, recognizable product. "Lovabee" introduces a charming, memorable identity while keeping the recognizable "Lov" prefix.
+- **Consistency**: Changing this across the backend, frontend, metadata, and even Git commits ensures a polished and professional feel.
+- **Brand Theming**: The amber, hexagonal, and bee-themed emojis significantly boost the 'finesse' and cohesiveness of the application's design system compared to standard blue defaults.

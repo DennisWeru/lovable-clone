@@ -111,9 +111,9 @@ export default function Navbar() {
           href="/"
           className="flex items-center gap-2 text-2xl font-semibold text-white hover:opacity-90 transition-opacity"
         >
-          {/* Simple gradient square to mimic Lovable logo */}
-          <span className="inline-block w-6 h-6 rounded-sm bg-gradient-to-br from-orange-400 via-pink-500 to-blue-500" />
-          Lovable Clone
+          {/* Hexagon gradient logo to mimic Lovabee */}
+          <span className="inline-block w-6 h-6 bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500" style={{ clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)' }} />
+          Lovabee
         </a>
 
         <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
@@ -142,7 +142,7 @@ export default function Navbar() {
         ) : user ? (
           <>
             {credits !== null && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 border border-gray-800 rounded-full text-xs font-medium text-blue-400">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 border border-gray-800 rounded-full text-xs font-medium text-amber-400">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="14"
@@ -153,7 +153,7 @@ export default function Navbar() {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-blue-500"
+                  className="text-amber-500"
                 >
                   <circle cx="12" cy="12" r="8" />
                   <line x1="12" y1="8" x2="12" y2="16" />

@@ -40,12 +40,12 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-4">
             <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 flex flex-col items-center">
               <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Credits</span>
-              <span className="text-2xl font-bold text-blue-400">{profile?.credits ?? 0}</span>
+              <span className="text-2xl font-bold text-amber-400">{profile?.credits ?? 0}</span>
             </div>
             {profile?.role === "admin" && (
               <Link
                 href="/admin"
-                className="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-5 py-3 rounded-xl font-medium hover:bg-purple-600/30 transition-colors h-full flex items-center justify-center"
+                className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-5 py-3 rounded-xl font-medium hover:bg-amber-500/30 transition-colors h-full flex items-center justify-center"
               >
                 Admin Panel
               </Link>
@@ -70,7 +70,7 @@ export default async function DashboardPage() {
             </div>
             <h3 className="text-lg font-medium text-gray-300 mb-2">No projects yet</h3>
             <p className="text-gray-500 max-w-sm mx-auto mb-6">You haven&apos;t generated any projects yet. Start by entering a prompt on the home page.</p>
-            <Link href="/" className="text-blue-400 hover:text-blue-300 font-medium">
+            <Link href="/" className="text-amber-400 hover:text-amber-300 font-medium">
               Generate your first project &rarr;
             </Link>
           </div>
@@ -119,7 +119,7 @@ export default async function DashboardPage() {
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-gray-500">Model: {project.model}</p>
                       {project.credits_used > 0 && (
-                        <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                        <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                           {project.credits_used.toLocaleString()} Credits Used
                         </span>
                       )}
@@ -138,7 +138,7 @@ export default async function DashboardPage() {
                         href={project.preview_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex-1 py-2 text-center text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        className="flex-1 py-2 text-center text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
                       >
                         View Preview
                       </a>

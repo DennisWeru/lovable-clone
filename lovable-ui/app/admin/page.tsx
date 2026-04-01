@@ -97,7 +97,7 @@ export default async function AdminPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${
-                        u.role === 'admin' ? 'bg-purple-500/20 text-purple-400' : 'bg-gray-700 text-gray-300'
+                        u.role === 'admin' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-700 text-gray-300'
                       }`}>
                         {u.role}
                       </span>
@@ -116,11 +116,11 @@ export default async function AdminPage() {
                             type="number"
                             name="credits"
                             defaultValue={u.credits}
-                            className="w-20 px-2 py-1 bg-black border border-gray-700 rounded text-white focus:outline-none focus:border-blue-500"
+                            className="w-20 px-2 py-1 bg-black border border-gray-700 rounded text-white focus:outline-none focus:border-amber-500"
                           />
                           <button
                             type="submit"
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded transition-colors"
                           >
                             Save
                           </button>
@@ -130,7 +130,7 @@ export default async function AdminPage() {
                             <input type="hidden" name="userId" value={u.id} />
                             <button
                               type="submit"
-                              className="px-3 py-1 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-500/30 rounded transition-colors"
+                              className="px-3 py-1 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 border border-amber-500/30 rounded transition-colors"
                               title="Make Admin"
                             >
                               Elevate

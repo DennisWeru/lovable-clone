@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         console.log(`[Export API] Creating repository: ${repoName}`);
         const { data: newRepo } = await octokit.rest.repos.createForAuthenticatedUser({
           name: repoName,
-          description: description || "Automatically generated with Lovable Clone",
+          description: description || "Automatically generated with Lovabee",
           private: isPrivate,
           auto_init: false,
         });
@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
     const setupScript = [
       `cd ${projectDir}`,
       `git init`,
-      `git config user.name "Lovable Clone Agent"`,
-      `git config user.email "agent@lovable-clone.vercel.app"`,
+      `git config user.name "Lovabee Agent"`,
+      `git config user.email "agent@lovabee.vercel.app"`,
       `git add .`,
-      `git commit -m "Exported from Lovable Clone"`,
+      `git commit -m "Exported from Lovabee"`,
       `git branch -M main`,
       `git remote add origin ${authenticatedUrl} || git remote set-url origin ${authenticatedUrl}`,
       `git push -u origin main -f`,
