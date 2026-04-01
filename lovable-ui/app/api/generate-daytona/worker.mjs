@@ -48,7 +48,7 @@ async function sendUpdate(type, data) {
 function runCommand(command, options = {}) {
   const cmdWithEnv = `${ROBUST_PATH} && export UV_CACHE_DIR=/home/daytona/.uv-cache && ${command}`;
   console.log(`[Worker] Executing: ${command}`);
-  // Debug: check disk usage before and after
+  // Debug: check disk usage
   try { execSync(`${ROBUST_PATH} && df -h / | tail -1`, { stdio: "inherit", shell: true }); } catch (e) {}
   
   return new Promise((resolve, reject) => {
@@ -83,46 +83,34 @@ async function main() {
 
     startFriendlyRotation();
     process.env.PATH = (process.env.HOME || "/home/daytona") + "/.local/bin:" + (process.env.HOME || "/home/daytona") + "/.cargo/bin:" + process.env.PATH;
-    const venvBin = "/home/daytona/.openhands-venv/bin/openhands";
-    let binaryPath = "openhands";
+    
     let isInstalled = false;
+    const venvBin = "/home/daytona/.openhands-venv/bin/python3";
+    
     try {
       if (fs.existsSync(venvBin)) {
         isInstalled = true;
-        binaryPath = venvBin;
-        console.log("[Worker] OpenHands virtualenv found, skipping installation.");
-      } else {
-        execSync(`${ROBUST_PATH} && which openhands`, { stdio: "ignore", shell: true });
-        isInstalled = true;
-        console.log("[Worker] OpenHands system-wide binary found.");
+        console.log("[Worker] OpenHands virtualenv found.");
       }
     } catch (e) {}
 
     if (!isInstalled) {
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
       try { 
-        // Force IPv4, add hard timeouts to prevent hanging. Check if uv is already in ~/.local/bin
-        const installUvCmd = `mkdir -p ~/.local/bin && if [ ! -f ~/.local/bin/uv ]; then ( (curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu) || (sudo apt-get update -y && sudo apt-get install -y python3-pip python3-venv && python3 -m venv ~/.uv-venv && ~/.uv-venv/bin/pip install uv && ln -sf ~/.uv-venv/bin/uv ~/.local/bin/uv) ); fi`;
+        const installUvCmd = `mkdir -p ~/.local/bin && if [ ! -f ~/.local/bin/uv ]; then ( curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu ); fi`;
         await runCommand(installUvCmd); 
       } catch (e) {
-        console.warn("[Worker] uv installation failed or timed out, proceeding to check if partial install worked...");
+        console.warn("[Worker] uv installation failed, attempting fallback...");
       }
 
-      await sendUpdate("progress", { message: "🤖 Installing OpenHands (this may take a minute)..." });
+      await sendUpdate("progress", { message: "🤖 Creating isolated environment..." });
       try {
-        // Use a persistent venv for openhands. Avoid --python overrides to prevent uv from downloading standalone python.
         await runCommand("uv venv /home/daytona/.openhands-venv");
+        await sendUpdate("progress", { message: "📦 Installing OpenHands (this may take a minute)..." });
         await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands");
-        binaryPath = venvBin;
       } catch (e) {
-        console.warn("[Worker] OpenHands installation failed, attempting system-wide fallback...");
-        try {
-          await runCommand("uv pip install --system openhands");
-          binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim();
-        } catch (e2) {
-          console.warn("[Worker] System installation failed, using 'uv run openhands'");
-          binaryPath = "uv run openhands";
-        }
+        console.error("[Worker] OpenHands installation failed.", e);
+        throw new Error("Failed to prepare OpenHands environment. Please try again.");
       }
     }
 
@@ -137,13 +125,13 @@ async function main() {
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
 
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
-    await runOpenHands(binaryPath);
+    await runAgentSDK(venvBin);
 
     // Validate that some files were actually created
     const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
     if (!hasPackageJson) {
       console.error("[Worker] Agent finished but package.json was not found. Generation likely failed.");
-      await sendUpdate("error", { message: "Agent failed to generate the website files. Check logs for DNS or API errors." });
+      await sendUpdate("error", { message: "Agent failed to generate the website files. Please check your prompt and try again." });
       return;
     }
 
@@ -151,16 +139,9 @@ async function main() {
     try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite\" 2>/dev/null || true"); } catch (e) {}
     await runCommand("nohup npx vite --host 0.0.0.0 --port 3000 > /home/daytona/dev-server.log 2>&1 &", { cwd: projectDir });
 
-    // Wait a bit to ensure server is up
-    await new Promise(r => setTimeout(r, 3000));
-    const serverLog = fs.existsSync("/home/daytona/dev-server.log") 
-      ? fs.readFileSync("/home/daytona/dev-server.log", "utf8").slice(-500) 
-      : "No log found";
-    console.log("[Worker] Dev server log tail:", serverLog);
-
     await sendUpdate("complete", { 
       message: "Build complete! 🎉", 
-      metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands" } 
+      metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands-sdk" } 
     });
   } catch (err) {
     console.error("[Worker] Fatal error:", err);
@@ -169,54 +150,44 @@ async function main() {
   }
 }
 
-async function runOpenHands(binaryPath) {
-  const sid = process.env.OPENHANDS_SID;
+async function runAgentSDK(pythonPath) {
   const env = { 
     ...process.env, 
     LLM_API_KEY: OPENROUTER_API_KEY, 
     LLM_BASE_URL: "https://openrouter.ai/api/v1", 
-    LLM_MODEL: "openrouter/" + MODEL,
-    PYTHONUNBUFFERED: "1",
-    SANDBOX_TYPE: "process",
-    RUNTIME: "process",
-    OPENHANDS_RUNTIME: "process",
+    LLM_MODEL: MODEL,
     OPENHANDS_WORKSPACE_BASE: projectDir,
-    OPENHANDS_SANDBOX_USER_ID: "0",
-    SANDBOX_USER_ID: "0",
-    OPENHANDS_CLI_NON_INTERACTIVE: "true",
-    GAI_STRATEGY: "inet"
+    OPENHANDS_SID: process.env.OPENHANDS_SID,
+    PYTHONUNBUFFERED: "1"
   };
   
-  const escapedPrompt = PROMPT.replace(/"/g, '\\"');
-  
-  // Use --resume if we have a SID
-  const resumeFlag = sid ? `--resume ${sid}` : "";
-  const command = `${ROBUST_PATH} && ${binaryPath} --headless --override-with-envs -v ${resumeFlag} -t "${escapedPrompt}"`;
+  const runnerPath = "/home/daytona/agent_runner.py";
+  const command = `${ROBUST_PATH} && ${pythonPath} ${runnerPath}`;
 
-
-  console.log(`[Worker] Running Agent with command: ${command}`);
+  console.log(`[Worker] Running Agent SDK with command: ${command}`);
 
   return new Promise((resolve, reject) => {
     const cp = spawn("/bin/sh", ["-c", command], { env, cwd: projectDir, stdio: ["ignore", "pipe", "pipe"] });
+    
     cp.stdout.on("data", (data) => {
       const output = data.toString();
-      // Pipe all output to console so user can see raw logs
       process.stdout.write(output);
       
-      const lower = output.toLowerCase();
-      if (lower.includes("action")) sendUpdate("progress", { message: "Agent acting..." });
-      if (lower.includes("thought")) sendUpdate("progress", { message: "Agent thinking..." });
-    });
-    cp.stderr.on("data", (data) => { 
-      const output = data.toString();
-      process.stderr.write(output);
-      if (output.includes("error") || output.includes("failure")) {
-         // Silently log failure keywords to console for visibility
+      const lines = output.split("\n");
+      for (const line of lines) {
+        if (!line.trim().startsWith("{")) continue;
+        try {
+          const payload = JSON.parse(line);
+          if (payload.type === "progress") sendUpdate("progress", { message: payload.message });
+          if (payload.type === "error") console.warn("[Runner Error]", payload.message);
+        } catch (e) { }
       }
     });
+
+    cp.stderr.on("data", (data) => { process.stderr.write(data.toString()); });
     cp.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`Agent exit ${code}. Check logs for details.`));
+      else reject(new Error(`Agent SDK exit ${code}. Check runner logs.`));
     });
   });
 }

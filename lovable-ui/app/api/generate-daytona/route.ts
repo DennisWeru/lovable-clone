@@ -97,6 +97,11 @@ export async function POST(req: NextRequest) {
     const remoteWorkerPath = "/home/daytona/generation-worker.mjs";
     await sandbox.fs.uploadFile(Buffer.from(workerContent), remoteWorkerPath);
 
+    // Upload Python SDK runner
+    const runnerPath = path.join(process.cwd(), "app/api/generate-daytona/agent_runner.py");
+    const runnerContent = fs.readFileSync(runnerPath, "utf8");
+    await sandbox.fs.uploadFile(Buffer.from(runnerContent), "/home/daytona/agent_runner.py");
+
     const host = req.headers.get("host") || process.env.VERCEL_URL || "lovabee.vercel.app";
     const protocol = (host.includes("localhost") || host.includes("127.0.0.1")) ? "http" : "https";
     const webhookUrl = process.env.WEBHOOK_BASE_URL 
