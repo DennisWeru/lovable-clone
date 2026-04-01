@@ -328,3 +328,20 @@ Replaced **Claude Code** with **OpenHands-AI** as the primary agent engine.
 - **Extensibility**: Native MCP support removes the "black box" nature of the previous agent.
 - **Performance**: Despite being a heavier agent, `uv` ensures the bootstrap process remains snappy in the Daytona sandbox.
 
+## Fixing worker.mjs Path Resolution in API Route (2026-04-01)
+
+### Problem
+The application was failing intermittently with `ENOENT: no such file or directory` when attempting to read the `worker.mjs` script in the `/api/generate-daytona` route. The error logs revealed that the path resolution was redundantly nesting directory names (e.g., `/var/task/lovable-ui/lovable-clone/lovable-ui/...`), suggesting that `process.cwd()` already contained the project root, but the code was adding it again.
+
+### Solution
+Simplified the `workerPath` resolution in `lovable-ui/app/api/generate-daytona/route.ts`. Instead of hardcoding the relative path from a presumed parent directory, it now uses a path relative to the current working directory, which is more reliable across both local and Vercel/serverless environments.
+
+### Changes
+- Modified `lovable-ui/app/api/generate-daytona/route.ts`:
+    - Changed `path.join(process.cwd(), "lovable-clone/lovable-ui/app/api/generate-daytona/worker.mjs")` to `path.join(process.cwd(), "app/api/generate-daytona/worker.mjs")`.
+
+### Rationale
+- **Environment Consistency**: In most deployment environments (like Vercel), `process.cwd()` points to the project root. Adding redundant project-name segments is a common source of `ENOENT` errors.
+- **Portability**: This change makes the code more portable, allowing it to run correctly whether the project is at the root of the workspace or nested within other folders, as long as it's being executed from the `lovable-ui` directory.
+
+

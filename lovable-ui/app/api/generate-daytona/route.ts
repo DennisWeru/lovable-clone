@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Worker Script (OpenHands) - Read from standalone file
-    const workerPath = path.join(process.cwd(), "lovable-clone/lovable-ui/app/api/generate-daytona/worker.mjs");
+    const workerPath = path.join(process.cwd(), "app/api/generate-daytona/worker.mjs");
     const workerContent = fs.readFileSync(workerPath, "utf8");
 
     const remoteWorkerPath = "/home/daytona/generation-worker.mjs";
