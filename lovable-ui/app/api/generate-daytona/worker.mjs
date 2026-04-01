@@ -133,7 +133,11 @@ async function runOpenHands(cmdPath) {
     LLM_API_KEY: OPENROUTER_API_KEY, 
     LLM_BASE_URL: "https://openrouter.ai/api/v1", 
     LLM_MODEL: "openrouter/" + MODEL,
-    PYTHONUNBUFFERED: "1"
+    PYTHONUNBUFFERED: "1",
+    RUNTIME: "process",
+    SANDBOX_RUNTIME: "process",
+    SANDBOX_LOCAL: "true",
+    WORKSPACE_BASE: projectDir
   };
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
