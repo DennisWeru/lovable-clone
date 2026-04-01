@@ -434,3 +434,11 @@ After locking the `openhands-sdk` to version `1.16.0`, the agent runner failed w
 
 #### Result
 The `Conversation` factory now receives the exact data type it requires, eliminating the deep internal serialization crash, while simultaneously maintaining a deterministic link to the user's project ID for session resumption.
+
+## Documenting OpenHands CLI for Autonomous Operation (2026-04-01)
+
+### Decision
+Created a specialized skill (`.agents/skills/openhands_cli/SKILL.md`) dedicated to integrating the OpenHands CLI within the Lovabee architecture. The skill documentation emphasizes headless operation, static JSON reporting, and deterministic dependency resolution using `uv`.
+
+### Rationale
+As Lovabee shifts towards more robust AI generation engines, capturing standard operating procedures (SOPs) for the underlying tools is vital. The OpenHands CLI provides powerful features (`--headless`, `--json`, `--override-with-envs`, `--resume`) perfectly suited for containerized sandboxes, but its defaults target interactive TUI development. Documenting the specific combination of flags and environment variables required for automated execution prevents regressions, specifically regarding output parsing, model overrides via OpenRouter, and session resumption.
