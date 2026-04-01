@@ -418,7 +418,7 @@ function GenerateContent() {
       case "SANDBOX_CREATION_FAILED":
         return {
           title: "Failed to create sandbox",
-          description: "There was an issue spinning up your environment. This might be a temporary Daytona outage.",
+          description: "There was an issue spinning up your environment. This might be a temporary service outage.",
           action: "Please try again in a moment.",
           canRetry: true,
         };

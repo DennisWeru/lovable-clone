@@ -45,7 +45,7 @@ export default function Home() {
           
           <div className="mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold tracking-wider">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            POWERED BY AI & DAYTONA
+            VIBE CODING AT THE SPEED OF LIGHT
           </div>
 
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-b from-white via-amber-100 to-amber-500 mb-6 tracking-tight drop-shadow-sm">

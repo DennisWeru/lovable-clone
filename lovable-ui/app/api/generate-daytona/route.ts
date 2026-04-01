@@ -416,7 +416,7 @@ async function runClaude(command) {
     PROMPT,
     "--model",
     MODEL,
-    "-y" // Always yes to confirm tool usage in non-interactive mode
+    "--dangerously-skip-permissions" // Bypass permission checks in non-interactive mode
   ];
 
   let actualCmd = command;

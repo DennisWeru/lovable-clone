@@ -276,3 +276,14 @@ Executed a comprehensive global rebranding to **Lovabee**.
 - **Product Legitimacy**: Establishing a unique name helps transition a project from a "clone" into a standalone, recognizable product. "Lovabee" introduces a charming, memorable identity while keeping the recognizable "Lov" prefix.
 - **Consistency**: Changing this across the backend, frontend, metadata, and even Git commits ensures a polished and professional feel.
 - **Brand Theming**: The amber, hexagonal, and bee-themed emojis significantly boost the 'finesse' and cohesiveness of the application's design system compared to standard blue defaults.
+
+## Fixing Claude Code Unknown Option Error (2026-04-01)
+
+### Problem
+The Daytona worker was failing with a `[Claude STDERR]: error: unknown option '-y'` error. Claude Code updated its CLI parameter for bypassing permissions from `-y` to `--dangerously-skip-permissions`, causing the generation jobs to crash during the autonomous execution phase.
+
+### Solution
+Updated the `lovable-ui/app/api/generate-daytona/route.ts` API route to pass the correct `--dangerously-skip-permissions` flag instead of `-y` in the spawned worker script argument list.
+
+### Rationale
+-   **API Contract**: Aligning the flags passed to `claude-code` via `npx` with the actual expected flags to ensure autonomous, non-interactive environments don't crash from argument parsing errors.
