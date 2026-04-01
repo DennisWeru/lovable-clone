@@ -38,8 +38,11 @@ async function sendUpdate(type, data) {
 }
 
 function runCommand(command, options = {}) {
-  const cmdWithEnv = `${ROBUST_PATH} && ${command}`;
+  const cmdWithEnv = `${ROBUST_PATH} && export UV_CACHE_DIR=/home/daytona/.uv-cache && ${command}`;
   console.log(`[Worker] Executing: ${command}`);
+  // Debug: check disk usage before and after
+  try { execSync(`${ROBUST_PATH} && df -h / | tail -1`, { stdio: "inherit", shell: true }); } catch (e) {}
+  
   return new Promise((resolve, reject) => {
     const cp = spawn(cmdWithEnv, [], { shell: true, stdio: "inherit", ...options });
     cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${command} failed with code ${code}`)));
@@ -85,12 +88,12 @@ async function main() {
       try {
         // Use a persistent venv for openhands. Avoid --python overrides to prevent uv from downloading standalone python.
         await runCommand("uv venv /home/daytona/.openhands-venv");
-        await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands-ai");
+        await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands");
         binaryPath = "/home/daytona/.openhands-venv/bin/openhands";
       } catch (e) {
         console.warn("[Worker] OpenHands installation failed, attempting system-wide fallback...");
         try {
-          await runCommand("uv pip install --system openhands-ai");
+          await runCommand("uv pip install --system openhands");
           binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim();
         } catch (e2) {
           console.warn("[Worker] System installation failed, using 'uv run openhands'");
@@ -110,7 +113,7 @@ async function main() {
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
 
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
-    await runOpenHands(binaryPath);
+    await runOpenHands();
 
     await sendUpdate("progress", { message: "🔗 Launching preview..." });
     try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite\" 2>/dev/null || true"); } catch (e) {}
@@ -127,30 +130,26 @@ async function main() {
   }
 }
 
-async function runOpenHands(cmdPath) {
+async function runOpenHands() {
   const env = { 
     ...process.env, 
     LLM_API_KEY: OPENROUTER_API_KEY, 
     LLM_BASE_URL: "https://openrouter.ai/api/v1", 
     LLM_MODEL: "openrouter/" + MODEL,
     PYTHONUNBUFFERED: "1",
-    OPENHANDS_RUNTIME: "local",
+    SANDBOX_TYPE: "process",
+    RUNTIME: "process",
+    OPENHANDS_RUNTIME: "process",
     OPENHANDS_WORKSPACE_BASE: projectDir,
-    OPENHANDS_SANDBOX_USER_ID: "0"
+    OPENHANDS_SANDBOX_USER_ID: "0",
+    SANDBOX_USER_ID: "0"
   };
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
   
-  // Use venv absolute path if it exists
-  let command;
-  if (cmdPath.includes(".openhands-venv")) {
-    const venvPython = "/home/daytona/.openhands-venv/bin/python3";
-    const absoluteOhPath = "/home/daytona/.openhands-venv/bin/openhands";
-    // We execute via the venv's python3 explicitly to avoid shebang path issues (Exit 127)
-    command = `${ROBUST_PATH} && ${venvPython} -m openhands.core.main -t "${escapedPrompt}" || ${venvPython} ${absoluteOhPath} -t "${escapedPrompt}"`;
-  } else {
-    command = `${ROBUST_PATH} && ${cmdPath} -t "${escapedPrompt}"`;
-  }
+  // Use uvx for execution - it handles the vitualenv and binary path automatically
+  const command = `${ROBUST_PATH} && uvx openhands -t "${escapedPrompt}"`;
+
 
   console.log(`[Worker] Running Agent with command: ${command}`);
 
