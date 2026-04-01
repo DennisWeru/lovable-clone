@@ -117,16 +117,16 @@ export default function Navbar() {
         </a>
 
         <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
-          <a href="#" className="hover:text-white transition-colors">
+          <a href="/community" className="hover:text-white transition-colors">
             Community
           </a>
-          <a href="#" className="hover:text-white transition-colors">
+          <a href="/enterprise" className="hover:text-white transition-colors">
             Enterprise
           </a>
-          <a href="#" className="hover:text-white transition-colors">
+          <a href="/learn" className="hover:text-white transition-colors">
             Learn
           </a>
-          <a href="#" className="hover:text-white transition-colors">
+          <a href="/shipped" className="hover:text-white transition-colors">
             Shipped
           </a>
         </div>
