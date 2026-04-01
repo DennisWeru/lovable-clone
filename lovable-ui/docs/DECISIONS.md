@@ -368,3 +368,29 @@ Performed a global cleanup of `worker.mjs` to remove all backslash escapes from 
 
 - Replaced the curl | sh installer with a direct binary download and a fallback to apt-get + pip-installed uv because the inner curl inside astral.sh install.sh would hang indefinitely on IPv6 DNS blackholes in the Daytona container.
 - Removed --python 3.12 from uv venv invocation to prevent uv from attempting standalone python downloads, which is unneeded on Ubuntu 24.04 and could trigger additional network timeouts.
+
+## URL Structure Change and Project Creation Logic (2026-04-01)
+
+### Problem
+The application previously used a flat URL structure for generation (`/generate?prompt=...`), which made it difficult to link back to specific projects or maintain a clean browser history. Additionally, there was no clear separation between "initial project creation" and "ongoing generation".
+
+### Solution
+Implemented a dynamic routing structure and a dedicated project creation API:
+1.  **Dynamic Route**: Moved the generation page from `app/generate/page.tsx` to `app/generate/[projectId]/page.tsx`.
+2.  **Dedicated API**: Created `app/api/projects/route.ts` to handle initial project record creation (POST) independently of the generation process.
+3.  **Handoff Logic**: Updated the home page to create a project first, then redirect to the project-specific URL with the initial prompt as a query parameter.
+4.  **Dashboard Integration**: Updated the dashboard to use the new project-specific URLs for "Continue" and "View" actions.
+
+### Changes
+-   **New Files**:
+    -   `app/api/projects/route.ts`: API for creating projects.
+    -   `app/generate/[projectId]/page.tsx`: Dynamic route for project-specific generation and preview.
+-   **Modified Files**:
+    -   `app/page.tsx`: Updated `handleGenerate` to call the project API first.
+    -   `app/dashboard/page.tsx`: Updated `Link` components to use the new URL structure.
+    -   `app/generate/page.tsx`: Now acts as a redirector to the home page (fallback).
+
+### Rationale
+-   **Clean URLs**: `/generate/:projectId` is more standard for web applications and makes project sharing/resuming more intuitive.
+-   **Separation of Concerns**: Decoupling project creation from the generation logic allows for better state management and a smoother user flow (e.g., creating a project even if the initial generation fails or is delayed).
+-   **User Experience**: Users can now refresh the generation page without triggering a "resubmit form" warning or losing the project context.

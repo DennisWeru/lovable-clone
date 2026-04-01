@@ -11,11 +11,27 @@ export default function Home() {
 
   const [model, setModel] = useState("google/gemini-3.1-flash-lite-preview"); // Update default model (Gemini 3.1 Flash Lite)
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) return;
 
-    // Navigate to generate page with prompt and model selection
-    router.push(`/generate?prompt=${encodeURIComponent(prompt)}&model=${encodeURIComponent(model)}`);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, model }),
+      });
+
+      if (!res.ok) throw new Error("Failed to create project");
+
+      const { projectId } = await res.json();
+
+      // Navigate to generate page with project ID, prompt, and model selection
+      router.push(`/generate/${projectId}?prompt=${encodeURIComponent(prompt)}&model=${encodeURIComponent(model)}`);
+    } catch (err) {
+      console.error("Error creating project:", err);
+      // Fallback for unexpected errors
+      router.push(`/generate?prompt=${encodeURIComponent(prompt)}&model=${encodeURIComponent(model)}`);
+    }
   };
 
   return (

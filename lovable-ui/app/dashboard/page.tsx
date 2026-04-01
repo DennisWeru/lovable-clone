@@ -80,7 +80,6 @@ export default async function DashboardPage() {
               const openParams = new URLSearchParams({
                 prompt: project.prompt,
                 model: project.model,
-                projectId: project.id,
                 ...(project.sandbox_id ? { sandboxId: project.sandbox_id } : {}),
                 ...(project.preview_url ? { previewUrl: project.preview_url } : {}),
               }).toString();
@@ -128,7 +127,7 @@ export default async function DashboardPage() {
 
                   <div className="border-t border-gray-800 p-4 bg-gray-900/50 flex gap-3">
                     {/* Primary action — always present for every project */}
-                    <Link href={`/generate?${openParams}`} className={primaryClass}>
+                    <Link href={`/generate/${project.id}?${openParams}`} className={primaryClass}>
                       {primaryLabel}
                     </Link>
 
