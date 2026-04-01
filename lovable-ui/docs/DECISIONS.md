@@ -309,3 +309,22 @@ Hardened the `Navbar` auth initialization to be non-blocking and self-correcting
 -   **User Experience**: A missing credit counter is a minor missing feature, but a missing Login/Dashboard button is a critical "app is broken" failure. Prioritizing the core navigation UI over secondary data (credits) improves perceived reliability.
 -   **Robustness**: The safety timeout addresses the "stuck" state reported by users when Supabase's internal session refresh logic might hang due to browser state issues.
 
+## Switching to OpenHands-AI for Multi-Model & MCP Support (2026-04-01)
+
+### Problem
+The Claude Code CLI integration was too restrictive, failing on non-Anthropic models (like Gemini) due to strict internal validation. Additionally, it lacked a native way to integrate custom "skills" or MCP servers.
+
+### Solution
+Replaced **Claude Code** with **OpenHands-AI** as the primary agent engine.
+
+### Key Points
+1. **True Multi-Model**: OpenHands uses LiteLLM, allowing any OpenRouter model (Gemini, Llama, GPT) to be used without crashes.
+2. **Fast Bootstrap**: Introduced **`uv`** as the Python package manager in the sandbox, reducing OpenHands installation time significantly.
+3. **Enhanced Skills**: Expanded the `CLAUDE.md` rules inside the sandbox to include "Agentic Skills" for React (feature-based architecture), Vite (preview optimization), Tailwind (premium aesthetics), and Git (atomic commits).
+4. **MCP Ready**: The new engine is natively compatible with the Model Context Protocol, enabling easy expansion of the agent's toolkit in future iterations.
+
+### Rationale
+- **Flexibility**: Users can now leverage the best model for their specific task (e.g., Gemini for speed, Sonnet for complexity).
+- **Extensibility**: Native MCP support removes the "black box" nature of the previous agent.
+- **Performance**: Despite being a heavier agent, `uv` ensures the bootstrap process remains snappy in the Daytona sandbox.
+

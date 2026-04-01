@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
       throw new Error(`Daytona sandbox failed: ${e.message}`);
     }
 
-    // 6. Worker Payload (Claude Code CLI Bootstrap)
+    // 6. Worker Payload (OpenHands Agent Bootstrap)
     // @ts-ignore
     const i = "import";
     const workerContent = String.raw`
@@ -199,9 +199,7 @@ process.on("unhandledRejection", (err) => {
   process.exit(1);
 });
 
-console.log("[Worker] Agent process started (Claude Code Mode).");
-
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+console.log("[Worker] Agent process started (OpenHands Mode).");
 
 const PROMPT = process.env.GENERATION_PROMPT || "";
 const MODEL = process.env.GENERATION_MODEL || "google/gemini-3.1-flash-lite-preview";
@@ -209,25 +207,20 @@ const PROJECT_ID = process.env.PROJECT_ID || "";
 const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const CONTEXT7_API_KEY = process.env.CONTEXT7_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
 const PREVIEW_URL = process.env.PREVIEW_URL || ("https://" + SANDBOX_ID + ".daytona.app");
-const SITE_URL = process.env.SITE_URL || "https://lovabee.vercel.app";
 
 const FRIENDLY_MESSAGES = [
-  "Analyzing your request and planning the best approach... 🐝",
+  "Analyzing your request and planning the architecture... 🐝",
+  "Initializing OpenHands autonomous agent... 🚀",
   "Designing a modern, responsive layout for your app...",
-  "Fine-tuning the UI components for a premium feel... 🍯",
+  "Applying expert skills in React, Vite, and Tailwind... 🍯",
   "Setting up the project structure and dependencies...",
   "Implementing your custom features with Lovabee's assistance...",
-  "Almost there! Polishing the final details...",
-  "This is going to look great! 🌟",
   "Optimizing performance and ensuring smooth transitions...",
-  "Crafting a beautiful color palette for your design... 🌻",
-  "Ensuring mobile responsiveness and cross-device compatibility...",
+  "Ensuring pixel-perfect design and mobile responsiveness... 🌻",
   "Applying best practices for clean, maintainable code...",
   "Adding subtle micro-animations for an enhanced experience...",
-  "Still working on it! Building complex features takes a moment...",
   "The Lovabee agent is currently busy writing high-quality code..."
 ];
 
@@ -274,124 +267,134 @@ async function main() {
     await sendUpdate("progress", { message: "🚀 Preparing a fresh environment for your project..." });
     console.log("[Worker] Bootstrapping environment...");
 
-    // Auto-detect a non-root user and drop privileges if running as root
+    // 1. Install 'uv' (Python package manager) for speed
     try {
-      const currentUid = execSync("id -u", { encoding: "utf8" }).trim();
-      const currentWhoami = execSync("whoami", { encoding: "utf8" }).trim();
-      console.log("[Worker] Starting as user: " + currentWhoami + " (uid: " + currentUid + ")");
-      
-      if (currentUid === "0") {
-        let nonRootUser = null;
-        for (const u of ["daytona", "pwuser", "ubuntu", "node", "app"]) {
-          try {
-            execSync("id -u " + u, { stdio: "ignore" });
-            nonRootUser = u;
-            break;
-          } catch (e) {}
-        }
-        
-        if (nonRootUser) {
-          console.log("[Worker] Found non-root user '" + nonRootUser + "'. Changing ownership and dropping privileges...");
-          execSync("chown -R " + nonRootUser + " /home/daytona");
-          process.setgid(nonRootUser);
-          process.setuid(nonRootUser);
-          process.env.HOME = "/home/daytona";
-          process.env.USER = nonRootUser;
-          console.log("[Worker] Successfully switched to user: " + nonRootUser);
-        } else {
-          console.warn("[Worker] WARNING: Could not find a standard non-root user to switch to.");
-        }
-      }
+      console.log("[Worker] Installing uv...");
+      execSync("curl -LsSf https://astral.sh/uv/install.sh | sh", { stdio: "inherit" });
+      process.env.PATH = path.join(process.env.HOME || "/home/daytona", ".cargo/bin") + ":" + process.env.PATH;
     } catch (e) {
-      console.warn("[Worker] Privilege drop check error:", e.message);
+      console.warn("[Worker] uv install failed, falling back to pip", e.message);
     }
 
-    if (!fs.existsSync("package.json")) {
-      fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
-    }
-
-    let claudeBinary = "claude";
-    const localClaudeDir = "/home/daytona/.claude";
-    const localClaudeBin = path.join(localClaudeDir, "node_modules", ".bin", "claude");
-
+    // 2. Install OpenHands
     try {
-      console.log("[Worker] Checking for Claude CLI...");
-      if (fs.existsSync(localClaudeBin)) {
-        claudeBinary = localClaudeBin;
-        console.log("[Worker] Using persistent local Claude CLI:", claudeBinary);
+      console.log("[Worker] Installing OpenHands...");
+      if (fs.existsSync(path.join(process.env.HOME || "/home/daytona", ".cargo/bin/uv"))) {
+          execSync("uv tool install openhands-ai", { stdio: "inherit" });
       } else {
-        execSync("claude --version", { stdio: "ignore" });
-        console.log("[Worker] Using global Claude CLI");
+          execSync("pip install openhands-ai", { stdio: "inherit" });
       }
     } catch (e) {
-      await sendUpdate("progress", { message: "📦 Initializing the Claude Code agent... This happens only once." });
-      console.log("[Worker] Claude CLI not found. Installing locally...");
-      
-      if (!fs.existsSync(localClaudeDir)) fs.mkdirSync(localClaudeDir, { recursive: true });
-      if (!fs.existsSync(path.join(localClaudeDir, "package.json"))) {
-        fs.writeFileSync(path.join(localClaudeDir, "package.json"), JSON.stringify({ name: "claude-env", type: "module" }));
-      }
-      
-      const npmCmd = "cd " + localClaudeDir + " && npm install @anthropic-ai/claude-code --no-fund --no-audit --no-update-notifier --loglevel error --cache /home/daytona/.npm-cache";
-      
-      try {
-        console.log("[Worker] Running:", npmCmd);
-        const out = execSync(npmCmd, { 
-          encoding: "utf8",
-          env: { ...process.env, NPM_CONFIG_CACHE: "/home/daytona/.npm-cache" }
-        });
-        console.log("[Worker] NPM INSTALL OUTPUT:", out);
-
-        if (fs.existsSync(localClaudeBin)) {
-          claudeBinary = localClaudeBin;
-          console.log("[Worker] Claude CLI installed at:", localClaudeBin);
-        } else {
-          console.warn("[Worker] Binary not found even after install. Falling back to npx.");
-          claudeBinary = "npx --yes @anthropic-ai/claude-code";
-        }
-      } catch (err) {
-        console.warn("[Worker] Local install failed, fallback to npx", err.message);
-        claudeBinary = "npx --yes @anthropic-ai/claude-code";
-        await sendUpdate("progress", { message: "⚠️ Optimizing installation process..." });
-      }
+      console.error("[Worker] OpenHands install failed:", e.message);
+      throw e;
     }
 
     const rules = [
-      "# Project Rules",
-      "- Environment: Node v20.15.0",
-      "- Preferred Stack: React, Vite 5, Tailwind CSS.",
-      "- Commands: Use 'npm' for all tasks.",
-      "- Preview: Websites must run on port 3000.",
-      "- Host: Use 'npx vite --host 0.0.0.0 --port 3000' to start the dev server.",
-      "- Persistence: Always install dependencies before starting the server.",
-      "- Visuals: Aim for premium, modern aesthetics."
+      "# Lovabee Agent Skills & Rules",
+      "## Tech Stack",
+      "- React (v18+), Vite (v5+), Tailwind CSS (v3+).",
+      "- Node.js v20.15.0.",
+      "",
+      "## High-Quality Web Generation Skills",
+      "- **Architecture**: Use a feature-based folder structure (src/features/...).",
+      "- **Styling**: Always use Tailwind utility classes. Prioritize modern, premium aesthetics (glassmorphism, vibrant gradients).",
+      "- **Components**: Keep components focused, stateless where possible, and accessible.",
+      "- **Vite Configuration**: Export on 0.0.0.0 and port 3000 for preview compatibility.",
+      "- **Interactivity**: Add smooth transitions and micro-animations using Framer Motion or CSS.",
+      "",
+      "## Git Workflow",
+      "- Use descriptive, atomic commits for every significant change.",
+      "- Ensure the main branch is always in a releasable state.",
+      "",
+      "## Critical Requirements",
+      "- Always run 'npm install' before starting dev server.",
+      "- Final website MUST be served on port 3000.",
+      "- Use 'npx vite --host 0.0.0.0 --port 3000' to start."
     ].join("\n");
+    
     console.log("[Worker] Writing CLAUDE.md...");
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
 
-    const snapshotScript = [
-      "(async () => {",
-      "  const p = 'play' + 'wright';",
-      "  const { chromium } = await import(/* webpackIgnore: true */ p);",
-      "  const fs = await import('fs');",
-      "  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });",
-      "  const page = await browser.newPage();",
-      "  try {",
-      "    await page.goto('http://localhost:3000', { waitUntil: 'networkidle', timeout: 30000 });",
-      "    const buffer = await page.screenshot();",
-      "    fs.writeFileSync('/home/daytona/latest-screenshot.png', buffer);",
-      "  } catch (err) {",
-      "    console.error('Screenshot failed:', err);",
-      "    process.exit(1);",
-      "  } finally {",
-      "    await browser.close();",
-      "  }",
-      "})();"
-    ].join("\n");
-    fs.writeFileSync("/home/daytona/snapshot.mjs", snapshotScript);
+    await runOpenHands();
 
-    console.log("[Worker Checkpoint] Entering runClaude...");
-    await runClaude(claudeBinary);
+    // After OpenHands finishes, ensure server is running
+    console.log("[Worker] Agent finished. Starting server...");
+    await sendUpdate("progress", { message: "🔗 Starting the preview server..." });
+    
+    try {
+      execSync('fuser -k 3000/tcp 2>/dev/null || pkill -f "vite" 2>/dev/null || true');
+      const startCmd = 'cd ' + projectDir + ' && nohup npx vite --host 0.0.0.0 --port 3000 > /home/daytona/dev-server.log 2>&1 &';
+      console.log("[Worker] Starting server with:", startCmd);
+      execSync(startCmd);
+      
+      let isReady = false;
+      for (let i = 0; i < 20; i++) {
+        try {
+          const httpCode = execSync('curl -s -o /dev/null -w "%{http_code}" http://localhost:3000', { encoding: 'utf8' }).trim();
+          if (httpCode === "200" || httpCode === "304") {
+            isReady = true;
+            console.log("[Worker] Server is READY");
+            break;
+          }
+        } catch (e) {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch (err) {
+      console.error("[Worker] Error starting dev server:", err);
+    }
+
+    await sendUpdate("complete", { 
+      message: "Success! Your project is ready for preview. 🎉", 
+      metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands" } 
+    });
+  } catch (err) {
+    console.error("[Worker] Fatal error:", err);
+    await sendUpdate("error", { message: "Generation failed: " + err.message });
+    process.exit(1);
+  }
+}
+
+async function runOpenHands() {
+  console.log("[Worker Checkpoint] runOpenHands started");
+  await sendUpdate("progress", { message: "🤖 Lovabee Agent is working with OpenHands..." });
+  
+  const env = {
+    ...process.env,
+    LLM_API_KEY: OPENROUTER_API_KEY,      
+    LLM_BASE_URL: "https://openrouter.ai/api/v1",
+    LLM_MODEL: "openrouter/" + MODEL, 
+    PYTHONPATH: projectDir
+  };
+
+  const args = [ "--headless", "-t", PROMPT ];
+
+  return new Promise((resolve, reject) => {
+    console.log("[Worker] Spawning OpenHands:", "openhands", args.join(" "));
+    const cp = spawn("openhands", args, { env, cwd: projectDir, stdio: ["ignore", "pipe", "pipe"] });
+    
+    cp.stdout.on("data", (data) => {
+      const text = data.toString();
+      process.stdout.write("[OpenHands STDOUT]: " + text); 
+      if (text.includes("action")) sendUpdate("progress", { message: "Agent performing actions..." });
+    });
+
+    cp.stderr.on("data", (data) => {
+      process.stderr.write("[OpenHands STDERR]: " + data.toString()); 
+    });
+
+    cp.on("close", (code) => {
+      console.log("[Worker Checkpoint] OpenHands process closed code:", code);
+      if (code === 0) resolve(); else reject(new Error("OpenHands exited with code " + code));
+    });
+
+    cp.on("error", (err) => {
+      console.error("[Worker] Process spawn error:", err);
+      reject(err);
+    });
+  });
+}
+
+main();
 
     console.log("[Worker] Agent finished. Starting server...");
     await sendUpdate("progress", { message: "🔗 Starting the preview server..." });
