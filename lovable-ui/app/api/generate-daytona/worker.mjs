@@ -144,9 +144,9 @@ async function runOpenHands(cmdPath) {
     const venvPython = "/home/daytona/.openhands-venv/bin/python3";
     const absoluteOhPath = "/home/daytona/.openhands-venv/bin/openhands";
     // We execute via the venv's python3 explicitly to avoid shebang path issues (Exit 127)
-    command = `${ROBUST_PATH} && ${venvPython} -m openhands.core.main --headless --override-with-envs -t "${escapedPrompt}" || ${venvPython} ${absoluteOhPath} --headless --override-with-envs -t "${escapedPrompt}"`;
+    command = `${ROBUST_PATH} && ${venvPython} -m openhands.core.main -t "${escapedPrompt}" || ${venvPython} ${absoluteOhPath} -t "${escapedPrompt}"`;
   } else {
-    command = `${ROBUST_PATH} && ${cmdPath} --headless --override-with-envs -t "${escapedPrompt}"`;
+    command = `${ROBUST_PATH} && ${cmdPath} -t "${escapedPrompt}"`;
   }
 
   console.log(`[Worker] Running Agent with command: ${command}`);
