@@ -295,6 +295,8 @@ async function main() {
           execSync("chown -R " + nonRootUser + " /home/daytona");
           process.setgid(nonRootUser);
           process.setuid(nonRootUser);
+          process.env.HOME = "/home/daytona";
+          process.env.USER = nonRootUser;
           console.log("[Worker] Successfully switched to user: " + nonRootUser);
         } else {
           console.warn("[Worker] WARNING: Could not find a standard non-root user to switch to.");
