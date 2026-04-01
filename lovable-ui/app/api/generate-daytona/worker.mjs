@@ -128,23 +128,15 @@ async function main() {
 }
 
 async function runOpenHands(cmdPath) {
-  const configContent = `[core]
-workspace_base = "${projectDir}"
-run_as_openhands = false
-
-[sandbox]
-runtime = "local"
-user_id = 1000
-username = "daytona"
-`;
-  fs.writeFileSync(path.join(projectDir, "config.toml"), configContent);
-
   const env = { 
     ...process.env, 
     LLM_API_KEY: OPENROUTER_API_KEY, 
     LLM_BASE_URL: "https://openrouter.ai/api/v1", 
     LLM_MODEL: "openrouter/" + MODEL,
-    PYTHONUNBUFFERED: "1"
+    PYTHONUNBUFFERED: "1",
+    OPENHANDS_RUNTIME: "local",
+    OPENHANDS_WORKSPACE_BASE: projectDir,
+    OPENHANDS_SANDBOX_USER_ID: "0"
   };
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
