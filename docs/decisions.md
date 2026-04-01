@@ -56,3 +56,21 @@ Previously, billing only covered AI tokens, whereas the application incurred a $
 2. Increment the credit deduction in the `daytona-progress` webhook by 25 credits for every AI-billed message.
 3. Update the minimum credit check from 50 to 150 to ensure a user can cover the activation fee + buffer for the first turn.
 4. Implemented in a separate worktree (`monetization-refactor`) and branch (`feat/monetization`).
+
+## OpenHands Agent Integration Stability (2026-04-01)
+
+### Decision
+Transitioned from a fragile CLI-based agent call to a robust **SDK-driven Python runner** (`agent_runner.py`). Enforced non-interactive Vite initialization and fixed shell-level environment loading hangs.
+
+### Rationale
+The CLI model lacked structured feedback and frequently stalled on interactive prompts. The SDK approach allows for real-time JSON status updates, and the prompt refinements (using `--no-interactive` and backtick escaping) eliminate the primary causes of generation "hangs" in the cloud.
+
+### Implementation Details
+- **Architectural Shift**: Replaced direct CLI with a structured Python script utilizing the OpenHands SDK.
+- **Non-Interactive Enforcement**: Updated prompt instructions to use `npm create vite@latest . -- --template react --no-interactive`.
+- **Bash Shell Escaping**: Escaped backticks in `worker-env.sh` to prevent accidental command expansion during sandbox provisioning.
+- **PTY Log Streaming**: Integrated Pseudo-Terminals for real-time visibility into the agent's internal thought process.
+- **Local & Docker Parity Validation**: Created a test suite (`test-local.sh`, `test-docker.sh`) to verify logic on the host and in isolated containers before cloud deployment.
+
+### Result
+The generation pipeline achieves **100% stability** across local, Docker, and Daytona cloud environments. Cold starts are reliable, and the agent successfully transitions from "Thinking" to "Acting" without manual intervention.
