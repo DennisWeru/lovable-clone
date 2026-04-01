@@ -267,18 +267,42 @@ function startFriendlyRotation() {
 
 const projectDir = path.join(process.cwd(), "website-project");
 if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
-try { execSync("chown -R daytona " + projectDir); } catch (e) {}
 
 async function main() {
   try {
     startFriendlyRotation();
     await sendUpdate("progress", { message: "🚀 Preparing a fresh environment for your project..." });
     console.log("[Worker] Bootstrapping environment...");
+
+    // Auto-detect a non-root user and drop privileges if running as root
     try {
-      const whoami = execSync("whoami", { encoding: "utf8" }).trim();
-      const uid = execSync("id -u", { encoding: "utf8" }).trim();
-      console.log("[Worker] Running as user: " + whoami + " (uid: " + uid + ")");
-    } catch (e) {}
+      const currentUid = execSync("id -u", { encoding: "utf8" }).trim();
+      const currentWhoami = execSync("whoami", { encoding: "utf8" }).trim();
+      console.log("[Worker] Starting as user: " + currentWhoami + " (uid: " + currentUid + ")");
+      
+      if (currentUid === "0") {
+        let nonRootUser = null;
+        for (const u of ["daytona", "pwuser", "ubuntu", "node", "app"]) {
+          try {
+            execSync("id -u " + u, { stdio: "ignore" });
+            nonRootUser = u;
+            break;
+          } catch (e) {}
+        }
+        
+        if (nonRootUser) {
+          console.log("[Worker] Found non-root user '" + nonRootUser + "'. Changing ownership and dropping privileges...");
+          execSync("chown -R " + nonRootUser + " /home/daytona");
+          process.setgid(nonRootUser);
+          process.setuid(nonRootUser);
+          console.log("[Worker] Successfully switched to user: " + nonRootUser);
+        } else {
+          console.warn("[Worker] WARNING: Could not find a standard non-root user to switch to.");
+        }
+      }
+    } catch (e) {
+      console.warn("[Worker] Privilege drop check error:", e.message);
+    }
 
     if (!fs.existsSync("package.json")) {
       fs.writeFileSync("package.json", JSON.stringify({ type: "module" }));
@@ -312,9 +336,6 @@ async function main() {
         console.log("[Worker] Running:", npmCmd);
         const out = execSync(npmCmd, { encoding: "utf8" });
         console.log("[Worker] NPM INSTALL OUTPUT:", out);
-        
-        // Ensure daytona user owns the newly installed CLI
-        try { execSync("chown -R daytona " + localClaudeDir); } catch (e) {}
 
         if (fs.existsSync(localClaudeBin)) {
           claudeBinary = localClaudeBin;
@@ -425,16 +446,6 @@ async function runClaude(command) {
     actualCmd = parts[0];
     actualArgs = [...parts.slice(1), ...args];
   }
-
-  // Handle root permission security check in Claude CLI
-  try {
-    const uidStr = execSync("id -u", { encoding: "utf8" }).trim();
-    if (uidStr === "0") {
-      console.log("[Worker] Running as root, wrapping command with 'sudo -E -u daytona'");
-      actualArgs = ["-E", "-u", "daytona", actualCmd, ...actualArgs];
-      actualCmd = "sudo";
-    }
-  } catch (e) {}
 
   return new Promise((resolve, reject) => {
     console.log("[Worker] Spawning agent:", actualCmd, actualArgs.join(" "));
