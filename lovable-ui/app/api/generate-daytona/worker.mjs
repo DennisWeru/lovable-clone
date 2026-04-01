@@ -142,13 +142,16 @@ async function runOpenHands() {
     OPENHANDS_RUNTIME: "process",
     OPENHANDS_WORKSPACE_BASE: projectDir,
     OPENHANDS_SANDBOX_USER_ID: "0",
-    SANDBOX_USER_ID: "0"
+    SANDBOX_USER_ID: "0",
+    TERM: "dumb",
+    OPENHANDS_CLI_NON_INTERACTIVE: "true",
+    PYTHONUNBUFFERED: "1"
   };
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
   
   // Use uvx for execution - it handles the vitualenv and binary path automatically
-  const command = `${ROBUST_PATH} && uvx openhands -t "${escapedPrompt}"`;
+  const command = `${ROBUST_PATH} && uvx openhands --override-with-envs -t "${escapedPrompt}"`;
 
 
   console.log(`[Worker] Running Agent with command: ${command}`);

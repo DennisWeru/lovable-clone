@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       sandbox = await daytona.create({
         public: false,
         image: "mcr.microsoft.com/playwright:v1.49.0-noble",
-        resources: { cpu: 2, memory: 4 },
+        resources: { cpu: 2, memory: 4, disk: 5 },
         autoStopInterval: 60
       });
       sandboxId = sandbox.id;
