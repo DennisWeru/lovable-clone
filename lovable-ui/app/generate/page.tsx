@@ -167,7 +167,7 @@ function GenerateContent() {
       setShowConsole(true);
       setLogs("Initializing background agent...\n");
       
-      // Start stall detection timer (3 minutes) - generation can take a while with retries
+      // Start stall detection timer (5 minutes) - generation can take a while with retries
       if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
       loadingStuckTimerRef.current = setTimeout(() => {
         setIsGenerating(false);
@@ -176,7 +176,7 @@ function GenerateContent() {
           code: "WORKER_STALLED"
         });
         setShowLogsAction(true);
-      }, 180000);
+      }, 300000);
 
       console.log("[Generate] Calling API /api/generate-daytona...");
       const response = await fetch("/api/generate-daytona", {
