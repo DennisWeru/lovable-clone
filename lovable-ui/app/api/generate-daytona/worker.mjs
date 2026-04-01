@@ -120,7 +120,7 @@ async function main() {
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
 
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
-    await runOpenHands();
+    await runOpenHands(binaryPath);
 
     await sendUpdate("progress", { message: "🔗 Launching preview..." });
     try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite\" 2>/dev/null || true"); } catch (e) {}
@@ -137,7 +137,7 @@ async function main() {
   }
 }
 
-async function runOpenHands() {
+async function runOpenHands(binaryPath) {
   const sid = process.env.OPENHANDS_SID;
   const env = { 
     ...process.env, 
@@ -159,7 +159,7 @@ async function runOpenHands() {
   
   // Use --resume if we have a SID
   const resumeFlag = sid ? `--resume ${sid}` : "";
-  const command = `${ROBUST_PATH} && uvx openhands --headless --override-with-envs ${resumeFlag} -t "${escapedPrompt}"`;
+  const command = `${ROBUST_PATH} && ${binaryPath} --headless --override-with-envs -v ${resumeFlag} -t "${escapedPrompt}"`;
 
 
   console.log(`[Worker] Running Agent with command: ${command}`);
