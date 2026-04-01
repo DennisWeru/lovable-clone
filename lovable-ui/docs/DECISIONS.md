@@ -344,4 +344,22 @@ Simplified the `workerPath` resolution in `lovable-ui/app/api/generate-daytona/r
 - **Environment Consistency**: In most deployment environments (like Vercel), `process.cwd()` points to the project root. Adding redundant project-name segments is a common source of `ENOENT` errors.
 - **Portability**: This change makes the code more portable, allowing it to run correctly whether the project is at the root of the workspace or nested within other folders, as long as it's being executed from the `lovable-ui` directory.
 
+## Fixing Escaped Template Literals in worker.mjs (2026-04-01)
+
+### Problem
+The `worker.mjs` script was failing in the Daytona sandbox with errors like `/bin/sh: 1: --headless: not found`. Investigation revealed that many variables in the script were escaped (e.g., `\${command}` instead of `${command}`). This happened because the script was likely extracted from a `String.raw` template literal in a previous session, but the escape backslashes were preserved in the standalone ESM file. This caused the shell to receive literal `${variable}` strings, which evaluated to empty, leaving the command malformed.
+
+### Solution
+Performed a global cleanup of `worker.mjs` to remove all backslash escapes from template literals. Also corrected the `ROBUST_PATH` definition to use literal `$` symbols for shell environment variable expansion.
+
+### Changes
+- Modified `lovable-ui/app/api/generate-daytona/worker.mjs`:
+    - Removed `\` from all `${...}` occurrences.
+    - Updated `ROBUST_PATH` to use `$HOME` and `$PATH` correctly.
+
+### Rationale
+- **JS Execution**: In a standalone `.mjs` file, template literals are standard syntax and must not have backslashes before the `${` if interpolation is desired.
+- **Shell Compatibility**: Ensuring the commands constructed for `spawn` and `execSync` have the actual values (like the path to the `openhands` binary) is critical for the agent loop to function in the sandbox.
+
+
 

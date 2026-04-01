@@ -22,7 +22,7 @@ const FRIENDLY_MESSAGES = [
 let lastUpdateAt = Date.now();
 let currentFriendlyIndex = 0;
 
-const ROBUST_PATH = "export PATH=\$HOME/.local/bin:\$HOME/.cargo/bin:/home/daytona/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin:\$PATH";
+const ROBUST_PATH = "export PATH=$HOME/.local/bin:$HOME/.cargo/bin:/home/daytona/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
 
 async function sendUpdate(type, data) {
   if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
@@ -38,11 +38,11 @@ async function sendUpdate(type, data) {
 }
 
 function runCommand(command, options = {}) {
-  const cmdWithEnv = `\${ROBUST_PATH} && \${command}`;
-  console.log(`[Worker] Executing: \${command}`);
+  const cmdWithEnv = `${ROBUST_PATH} && ${command}`;
+  console.log(`[Worker] Executing: ${command}`);
   return new Promise((resolve, reject) => {
     const cp = spawn(cmdWithEnv, [], { shell: true, stdio: "inherit", ...options });
-    cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`\${command} failed with code \${code}`)));
+    cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${command} failed with code ${code}`)));
   });
 }
 
@@ -66,7 +66,7 @@ async function main() {
     let binaryPath = "openhands";
     let isInstalled = false;
     try {
-      execSync(`\${ROBUST_PATH} && which openhands`, { stdio: "ignore", shell: true });
+      execSync(`${ROBUST_PATH} && which openhands`, { stdio: "ignore", shell: true });
       isInstalled = true;
       console.log("[Worker] OpenHands already available.");
     } catch (e) {}
@@ -80,7 +80,7 @@ async function main() {
       } catch (e) {
         await runCommand("uv pip install --system openhands-ai --python 3.12");
       }
-      try { binaryPath = execSync(`\${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim(); } 
+      try { binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim(); } 
       catch (e) { binaryPath = "uv run openhands"; }
     }
 
@@ -121,7 +121,7 @@ async function runOpenHands(cmdPath) {
     PYTHONUNBUFFERED: "1"
   };
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
-  const command = `\${ROBUST_PATH} && \${cmdPath} --headless -t "\${escapedPrompt}"`;
+  const command = `${ROBUST_PATH} && ${cmdPath} --headless -t "${escapedPrompt}"`;
   return new Promise((resolve, reject) => {
     const cp = spawn("/bin/sh", ["-c", command], { env, cwd: projectDir, stdio: ["ignore", "pipe", "pipe"] });
     cp.stdout.on("data", (data) => {
@@ -132,7 +132,7 @@ async function runOpenHands(cmdPath) {
       if (lower.includes("thought")) sendUpdate("progress", { message: "Agent thinking..." });
     });
     cp.stderr.on("data", (data) => { process.stderr.write(data.toString()); });
-    cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Agent exit \${code}`)));
+    cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Agent exit ${code}`)));
   });
 }
 
