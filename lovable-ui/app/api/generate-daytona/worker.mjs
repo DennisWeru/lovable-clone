@@ -56,7 +56,7 @@ function startFriendlyRotation() {
   }, 20000);
 }
 
-const projectDir = path.join(process.cwd(), "website-project");
+const projectDir = "/home/daytona/website-project";
 if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
 async function main() {
@@ -137,7 +137,8 @@ async function runOpenHands(cmdPath) {
     RUNTIME: "local",
     SANDBOX_RUNTIME: "local",
     SANDBOX_LOCAL: "true",
-    WORKSPACE_BASE: projectDir
+    WORKSPACE_BASE: projectDir,
+    SANDBOX_USER_ID: "0"
   };
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
