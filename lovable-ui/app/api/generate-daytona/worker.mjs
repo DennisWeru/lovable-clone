@@ -22,19 +22,27 @@ const FRIENDLY_MESSAGES = [
 let lastUpdateAt = Date.now();
 let currentFriendlyIndex = 0;
 
-const ROBUST_PATH = "export PATH=$HOME/.local/bin:$HOME/.cargo/bin:/home/daytona/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
+const ROBUST_PATH = "export PATH=$HOME/.local/bin:$HOME/.cargo/bin:/home/daytona/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH && export GAI_STRATEGY=inet";
 
 async function sendUpdate(type, data) {
   if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
   lastUpdateAt = Date.now();
+  console.log(`[Worker] Sending ${type} update to ${WEBHOOK_URL}`);
   try {
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: PROJECT_ID, token: WEBHOOK_TOKEN, type, ...data })
+      body: JSON.stringify({ projectId: PROJECT_ID, token: WEBHOOK_TOKEN, type, ...data }),
+      signal: AbortSignal.timeout(10000) // 10s timeout
     });
     if (!res.ok) console.warn("[Worker] Update failed status:", res.status);
-  } catch (e) { console.warn("[Worker] Update failed:", e.message); }
+    else console.log(`[Worker] Update ${type} sent successfully.`);
+  } catch (e) { 
+    console.warn("[Worker] Update failed:", e.message); 
+    if (e.message.includes("resolution") || e.message.includes("fetch failed")) {
+      console.error("[Worker] CRITICAL: Webhook URL is unreachable. Local development requires a tunnel (ngrok).");
+    }
+  }
 }
 
 function runCommand(command, options = {}) {
@@ -64,6 +72,15 @@ if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
 async function main() {
   try {
+    console.log("[Worker] Starting main loop. Checking network...");
+    // 0. Pre-flight check
+    try {
+       const controller = new AbortController();
+       const timeoutId = setTimeout(() => controller.abort(), 5000);
+       await fetch(WEBHOOK_URL, { method: "HEAD", signal: controller.signal }).catch(() => {});
+       clearTimeout(timeoutId);
+    } catch (e) {}
+
     startFriendlyRotation();
     process.env.PATH = (process.env.HOME || "/home/daytona") + "/.local/bin:" + (process.env.HOME || "/home/daytona") + "/.cargo/bin:" + process.env.PATH;
     const venvBin = "/home/daytona/.openhands-venv/bin/openhands";
@@ -122,9 +139,24 @@ async function main() {
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
     await runOpenHands(binaryPath);
 
+    // Validate that some files were actually created
+    const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
+    if (!hasPackageJson) {
+      console.error("[Worker] Agent finished but package.json was not found. Generation likely failed.");
+      await sendUpdate("error", { message: "Agent failed to generate the website files. Check logs for DNS or API errors." });
+      return;
+    }
+
     await sendUpdate("progress", { message: "🔗 Launching preview..." });
     try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite\" 2>/dev/null || true"); } catch (e) {}
     await runCommand("nohup npx vite --host 0.0.0.0 --port 3000 > /home/daytona/dev-server.log 2>&1 &", { cwd: projectDir });
+
+    // Wait a bit to ensure server is up
+    await new Promise(r => setTimeout(r, 3000));
+    const serverLog = fs.existsSync("/home/daytona/dev-server.log") 
+      ? fs.readFileSync("/home/daytona/dev-server.log", "utf8").slice(-500) 
+      : "No log found";
+    console.log("[Worker] Dev server log tail:", serverLog);
 
     await sendUpdate("complete", { 
       message: "Build complete! 🎉", 
@@ -152,7 +184,7 @@ async function runOpenHands(binaryPath) {
     OPENHANDS_SANDBOX_USER_ID: "0",
     SANDBOX_USER_ID: "0",
     OPENHANDS_CLI_NON_INTERACTIVE: "true",
-    PYTHONUNBUFFERED: "1"
+    GAI_STRATEGY: "inet"
   };
   
   const escapedPrompt = PROMPT.replace(/"/g, '\\"');
@@ -168,12 +200,20 @@ async function runOpenHands(binaryPath) {
     const cp = spawn("/bin/sh", ["-c", command], { env, cwd: projectDir, stdio: ["ignore", "pipe", "pipe"] });
     cp.stdout.on("data", (data) => {
       const output = data.toString();
+      // Pipe all output to console so user can see raw logs
       process.stdout.write(output);
+      
       const lower = output.toLowerCase();
       if (lower.includes("action")) sendUpdate("progress", { message: "Agent acting..." });
       if (lower.includes("thought")) sendUpdate("progress", { message: "Agent thinking..." });
     });
-    cp.stderr.on("data", (data) => { process.stderr.write(data.toString()); });
+    cp.stderr.on("data", (data) => { 
+      const output = data.toString();
+      process.stderr.write(output);
+      if (output.includes("error") || output.includes("failure")) {
+         // Silently log failure keywords to console for visibility
+      }
+    });
     cp.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`Agent exit ${code}. Check logs for details.`));

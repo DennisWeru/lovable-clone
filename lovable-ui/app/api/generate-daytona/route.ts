@@ -97,9 +97,17 @@ export async function POST(req: NextRequest) {
     const remoteWorkerPath = "/home/daytona/generation-worker.mjs";
     await sandbox.fs.uploadFile(Buffer.from(workerContent), remoteWorkerPath);
 
-    const host = req.headers.get("host") || "lovabee.vercel.app";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const webhookUrl = `${protocol}://${host}/api/webhooks/daytona-progress`;
+    const host = req.headers.get("host") || process.env.VERCEL_URL || "lovabee.vercel.app";
+    const protocol = (host.includes("localhost") || host.includes("127.0.0.1")) ? "http" : "https";
+    const webhookUrl = process.env.WEBHOOK_BASE_URL 
+      ? `${process.env.WEBHOOK_BASE_URL}/api/webhooks/daytona-progress`
+      : `${protocol}://${host}/api/webhooks/daytona-progress`;
+
+    console.log(`[API] Webhook URL configured as: ${webhookUrl}`);
+
+    if (!process.env.OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY is missing in server environment");
+    }
 
     let previewUrl = `https://${sandboxId}.daytona.app`; 
     try {
@@ -113,10 +121,12 @@ export async function POST(req: NextRequest) {
       PROJECT_ID: projectRecord.id,
       WEBHOOK_TOKEN: webhookToken,
       WEBHOOK_URL: webhookUrl,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       SANDBOX_ID: sandboxId,
       PREVIEW_URL: previewUrl,
-      OPENHANDS_SID: `sid-${projectRecord.id.slice(0, 8)}`
+      OPENHANDS_SID: `sid-${projectRecord.id.slice(0, 8)}`,
+      GAI_STRATEGY: "inet", // Force IPv4 to bypass DNS hangs
+      PYTHONUNBUFFERED: "1"
     }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
     await sandbox.fs.uploadFile(Buffer.from(envFileContent), "/home/daytona/worker-env.sh");
