@@ -74,8 +74,9 @@ async function main() {
     if (!isInstalled) {
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
       try { 
-        // Force IPv4, add hard timeouts (15s connect, 45s max), and fallback to wget if curl hangs or fails
-        await runCommand("curl -4 --connect-timeout 10 --max-time 45 --retry 3 --retry-connrefused -LsSf https://astral.sh/uv/install.sh | sh || wget -qO- --timeout=45 --tries=3 https://astral.sh/uv/install.sh | sh || (sudo apt-get update && sudo apt-get install -y python3-pip && pip3 install uv --user) || pip install uv --user"); 
+        // Force IPv4, add hard timeouts to prevent hanging. Download binary directly instead of using the sh script because the script's inner curl commands lack timeouts.
+        const installUvCmd = `mkdir -p ~/.local/bin && ( (curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu) || (sudo apt-get update -y && sudo apt-get install -y python3-pip python3-venv && python3 -m venv ~/.uv-venv && ~/.uv-venv/bin/pip install uv && ln -sf ~/.uv-venv/bin/uv ~/.local/bin/uv) )`;
+        await runCommand(installUvCmd); 
       } catch (e) {
         console.warn("[Worker] uv installation failed or timed out, proceeding to check if partial install worked...");
       }
