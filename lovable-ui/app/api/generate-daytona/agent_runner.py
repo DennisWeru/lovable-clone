@@ -8,8 +8,41 @@ from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.task_tracker import TaskTrackerTool
 from openhands.tools.terminal import TerminalTool
 
+import inspect
+from typing import Any, Dict
+
 def log_status(message: str, type: str = "status"):
     print(json.dumps({"type": type, "message": message}), flush=True)
+
+def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str, conv_id: str) -> Conversation:
+    """Safely create a conversation by trying multiple known argument patterns."""
+    log_status(f"Inspecting Conversation signature: {inspect.signature(Conversation)}", "status")
+    
+    # 1. Try with id=
+    try:
+        return Conversation(
+            agent=agent, 
+            workspace=workspace,
+            persistence_dir=persistence_dir,
+            id=conv_id
+        )
+    except TypeError as e:
+        log_status(f"Constructor with 'id' failed: {str(e)}", "status")
+    
+    # 2. Try with conversation_id=
+    try:
+        return Conversation(
+            agent=agent, 
+            workspace=workspace,
+            persistence_dir=persistence_dir,
+            conversation_id=conv_id
+        )
+    except TypeError as e:
+        log_status(f"Constructor with 'conversation_id' failed: {str(e)}", "status")
+
+    # 3. Try fallback - minimal arguments
+    log_status("Falling back to minimal Conversation initialization", "status")
+    return Conversation(agent=agent, workspace=workspace)
 
 async def main():
     prompt = os.getenv("GENERATION_PROMPT", "")
@@ -44,17 +77,12 @@ async def main():
 
         log_status("Starting conversation loop...")
         
-        # OpenHands SDK uses persistence_dir and id for state management.
+        # OpenHands SDK uses persistence_dir for state management.
         persistence_dir = os.path.join(os.path.dirname(project_dir), ".openhands_state")
         if not os.path.exists(persistence_dir):
             os.makedirs(persistence_dir, exist_ok=True)
 
-        conversation = Conversation.create(
-            agent=agent, 
-            workspace=project_dir,
-            persistence_dir=persistence_dir,
-            id=conv_id if conv_id else None
-        )
+        conversation = safe_create_conversation(agent, project_dir, persistence_dir, conv_id)
 
         # Inject the custom rules if they exist (we created CLAUDE.md in worker.mjs)
         # The agent will naturally see CLAUDE.md in its workspace.

@@ -106,8 +106,8 @@ async function main() {
       await sendUpdate("progress", { message: "🤖 Creating isolated environment..." });
       try {
         await runCommand("uv venv /home/daytona/.openhands-venv");
-        await sendUpdate("progress", { message: "📦 Installing OpenHands (this may take a minute)..." });
-        await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands");
+        await sendUpdate("progress", { message: "📦 Installing OpenHands SDK (this may take a minute)..." });
+        await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands-sdk openhands-tools");
       } catch (e) {
         console.error("[Worker] OpenHands installation failed.", e);
         throw new Error("Failed to prepare OpenHands environment. Please try again.");

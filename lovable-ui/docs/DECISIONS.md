@@ -407,4 +407,18 @@ The OpenHands SDK runner (`agent_runner.py`) crashed with the error: `Agent Erro
 
 #### Rationale
 -   **SDK Stability**: Aligning with the documented factory pattern ensures the agent works across different minor versions of the OpenHands SDK.
--   **State Persistence**: Identifying the conversation by `id` is crucial for allowing the agent to resume its work if a generation is interrupted or if follow-up prompts are sent to the same project.
+
+### 2026-04-01: Correcting OpenHands SDK Installation and Initialization Robustness
+
+#### Issue Diagnosis
+1.  **SDK Package Mismatch**: The worker was installing `openhands`, which is primarily the CLI/TUI package. The programmatic SDK is contained in `openhands-sdk`. This led to missing methods (like `.create()`) and potentially outdated signature definitions.
+2.  **Signature Inconsistency**: The initialization of the `Conversation` factory is highly version-dependent within the OpenHands ecosystem, frequently toggling between keyword argument names like `id`, `conversation_id`, and `sid`.
+
+#### Solution Implementation
+1.  **Package Correction**: Updated `worker.mjs` to target `openhands-sdk` and `openhands-tools` directly.
+2.  **Robust In-Process Introspection**: Refactored `agent_runner.py` to use a `safe_create_conversation` pattern. This helper function uses `inspect.signature` to log the exact constructor requirements for later debugging and proactively retries multiple initialization patterns (with `id`, then `conversation_id`, then finally fallback to a minimal signature).
+3.  **Namespace Clarity**: Unified all references to the session/conversation ID under the `conv_id` variable to prevent any accidental collision with the Python `id` keyword or the legacy `sid` argument name.
+
+#### Rationale
+-   **Future-Proofing**: This approach makes the agent runner "blindly compatible" with a wider range of OpenHands SDK versions without requiring manual updates for every upstream minor release.
+-   **Improved Debugging**: By logging the class signature directly from the execution environment, we can identify exact API surface changes from the sandbox logs.
