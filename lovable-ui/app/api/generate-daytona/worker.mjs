@@ -73,15 +73,27 @@ async function main() {
 
     if (!isInstalled) {
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
-      try { await runCommand("curl -LsSf https://astral.sh/uv/install.sh | sh"); } catch (e) {}
+      try { 
+        // Use retry and try pip as well
+        await runCommand("curl --retry 5 --retry-connrefused -LsSf https://astral.sh/uv/install.sh | sh || pip3 install uv --user || pip install uv --user"); 
+      } catch (e) {
+        console.warn("[Worker] uv installation failed, trying direct pip install for OpenHands...");
+      }
+
       await sendUpdate("progress", { message: "🤖 Installing OpenHands (this may take a minute)..." });
       try {
-        await runCommand("uv pip install --system openhands-ai");
+        await runCommand("uv pip install --system openhands-ai || uv pip install --user openhands-ai || pip3 install openhands-ai --user || pip install openhands-ai --user");
       } catch (e) {
-        await runCommand("uv pip install --system openhands-ai --python 3.12");
+        console.warn("[Worker] OpenHands installation failed via all methods:", e.message);
+        // If we still can't install, we try one last ditch effort assuming uv might have worked partially
+        try { await runCommand("uv run pip install openhands-ai"); } catch (e2) {}
       }
-      try { binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim(); } 
-      catch (e) { binaryPath = "uv run openhands"; }
+      
+      try { 
+        binaryPath = execSync(`${ROBUST_PATH} && which openhands`, { shell: true }).toString().trim(); 
+      } catch (e) { 
+        binaryPath = "uv run openhands"; 
+      }
     }
 
     const rules = [
