@@ -204,8 +204,9 @@ async function main() {
         await runCommand(`rm -rf /tmp/react-template/.git`);
         await runCommand(`bash -c 'shopt -s dotglob && cp -r /tmp/react-template/* ${projectDir}/'`);
         await runCommand(`rm -rf /tmp/react-template`);
+        await runCommand(`git init && git checkout -b main`, { cwd: projectDir });
         await sendUpdate("progress", { message: "📦 Installing project dependencies (this may take a minute)..." });
-        await runCommand("npm install --no-package-lock --no-audit --ignore-scripts", { cwd: projectDir });
+        await runCommand("npm install --no-package-lock --no-audit", { cwd: projectDir });
       } catch (e) {
         console.error("[Worker] Template cloning failed:", e);
         // Fallback to minimal setup if clone fails to avoid total failure
