@@ -61,13 +61,45 @@ function runCommand(command, options = {}) {
 }
 
 function startFriendlyRotation() {
-  setInterval(async () => {
+  const interval = setInterval(async () => {
     if (Date.now() - lastUpdateAt > 20000) {
       const msg = FRIENDLY_MESSAGES[currentFriendlyIndex];
       currentFriendlyIndex = (currentFriendlyIndex + 1) % FRIENDLY_MESSAGES.length;
       await sendUpdate("progress", { message: "✨ " + msg });
     }
   }, 20000);
+  return interval;
+}
+
+function findPackageJson(dir, depth = 0) {
+  if (depth > 1) return null;
+  try {
+    const files = fs.readdirSync(dir);
+    if (files.includes("package.json")) return dir;
+    for (const file of files) {
+      const fullPath = path.join(dir, file);
+      if (fs.statSync(fullPath).isDirectory() && !file.startsWith(".") && file !== "node_modules") {
+        const found = findPackageJson(fullPath, depth + 1);
+        if (found) return found;
+      }
+    }
+  } catch (e) { }
+  return null;
+}
+
+function flattenProject(sourceDir, targetDir) {
+  if (path.resolve(sourceDir) === path.resolve(targetDir)) return;
+  console.log(`[Worker] Flattening project from ${sourceDir} to ${targetDir}...`);
+  try {
+    // Move all files including hidden ones using bash shell
+    execSync(`bash -c "shopt -s dotglob && mv ${sourceDir}/* ${targetDir}/"`);
+    // Remove the now empty subdirectory
+    if (fs.readdirSync(sourceDir).length === 0) {
+      fs.rmdirSync(sourceDir);
+    }
+  } catch (e) {
+    console.warn("[Worker] Flattening encountered issues (some files may already exist):", e.message);
+  }
 }
 
 const projectDir = "/home/daytona/website-project";
@@ -84,7 +116,7 @@ async function main() {
        clearTimeout(timeoutId);
     } catch (e) {}
 
-    startFriendlyRotation();
+    const friendlyInterval = startFriendlyRotation();
     process.env.PATH = (process.env.HOME || "/home/daytona") + "/.local/bin:" + (process.env.HOME || "/home/daytona") + "/.cargo/bin:" + process.env.PATH;
     
     let isInstalled = false;
@@ -98,7 +130,6 @@ async function main() {
     } catch (e) {}
 
     if (!isInstalled) {
-      // ... (existing installation logic)
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
       try { 
         const installUvCmd = `mkdir -p ~/.local/bin && if [ ! -f ~/.local/bin/uv ]; then ( curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu ); fi`;
@@ -148,26 +179,54 @@ async function main() {
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
     await runAgentSDK(venvBin);
 
-    // Validate that some files were actually created
-    const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
-    if (!hasPackageJson) {
+    // 1. Recursive Project Validation & Flattening
+    const foundDir = findPackageJson(projectDir);
+    if (!foundDir) {
       console.error("[Worker] Agent finished but package.json was not found. Generation likely failed.");
-      await sendUpdate("error", { message: "Agent failed to generate the website files. Please check your prompt and try again." });
-      return;
+      await sendUpdate("error", { message: "Agent failed to generate the website files (no package.json found). Please check your prompt." });
+      clearInterval(friendlyInterval);
+      process.exit(1);
     }
 
-    await sendUpdate("progress", { message: "🔗 Launching preview..." });
-    try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite\" 2>/dev/null || true"); } catch (e) {}
-    await runCommand("nohup npx vite --host 0.0.0.0 --port 3000 > /home/daytona/dev-server.log 2>&1 &", { cwd: projectDir });
+    if (path.resolve(foundDir) !== path.resolve(projectDir)) {
+      console.log(`[Worker] Project detected in subdirectory: ${foundDir}. Flattening...`);
+      await sendUpdate("progress", { message: "🪄 Finalizing project structure..." });
+      flattenProject(foundDir, projectDir);
+    }
 
-    // 4. Backup to Supabase
-    await sendUpdate("progress", { message: "Pakcing up... 📦 Securing backup to cloud storage..." });
+    // 2. Dynamic Dev Server Detection
+    await sendUpdate("progress", { message: "🔗 Launching preview..." });
+    let devCommand = "npx vite --host 0.0.0.0 --port 3000";
+    
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
+      if (pkg.scripts?.dev) {
+        if (pkg.scripts.dev.includes("next")) {
+          devCommand = "npx next dev --port 3000 --hostname 0.0.0.0";
+        } else if (pkg.scripts.dev.includes("vite")) {
+          devCommand = "npx vite --host 0.0.0.0 --port 3000";
+        } else {
+          devCommand = "npm run dev -- --port 3000 --host 0.0.0.0 --hostname 0.0.0.0";
+        }
+      }
+    } catch (e) {
+       console.warn("[Worker] Could not parse package.json for dev scripts, using fallback.");
+    }
+
+    try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite|next\" 2>/dev/null || true"); } catch (e) {}
+    await runCommand(`nohup ${devCommand} > /home/daytona/dev-server.log 2>&1 &`, { cwd: projectDir });
+
+    // 3. Backup to Supabase
+    await sendUpdate("progress", { message: "Bakcing up... 📦 Securing backup to cloud storage..." });
     await backupProject();
 
     await sendUpdate("complete", { 
       message: "Build complete! 🎉", 
       metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands-sdk" } 
     });
+
+    clearInterval(friendlyInterval);
+    process.exit(0);
   } catch (err) {
     console.error("[Worker] Fatal error:", err);
     await sendUpdate("error", { message: "Error: " + err.message });

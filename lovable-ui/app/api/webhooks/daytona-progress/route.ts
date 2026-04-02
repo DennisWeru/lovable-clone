@@ -25,7 +25,18 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (projectError || !project) {
-      console.error("[Webhook] Unauthorized or invalid project:", projectId);
+      // Descriptive logging to distinguish between "project not found" and "token mismatch"
+      const { data: projectCheck } = await supabase
+        .from("projects")
+        .select("id, webhook_token")
+        .eq("id", projectId)
+        .single();
+      
+      if (!projectCheck) {
+        console.error(`[Webhook] Unauthorized: Project ${projectId} not found in database.`);
+      } else {
+        console.error(`[Webhook] Unauthorized: Token mismatch for project ${projectId}.`);
+      }
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

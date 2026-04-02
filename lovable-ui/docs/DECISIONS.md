@@ -453,3 +453,20 @@ Implemented mandatory session cleanup in `app/api/generate-daytona/route.ts`:
 ### Rationale
 -   **Security**: Prevents unauthorized updates from old processes.
 -   **Stability**: Eliminates log interleaving and flickering status updates.
+
+## Robust Project Structure Detection and Flattening (2026-04-02)
+
+### Problem
+Agents often initialize projects in subdirectories (e.g., `jordan-blog/`) despite rules to use the current directory. This caused the worker to fail its `package.json` validation, leading to false "Worker Silent Failure" reports and preventing the dev server from starting correctly.
+
+### Solution
+Implemented a multi-layered stabilization in `worker.mjs`:
+1.  **Recursive Search**: Added `findPackageJson` to locate the project root up to 2 levels deep.
+2.  **Automatic Flattening**: Added `flattenProject` to move all files from a detected subdirectory to the workspace root (`/home/daytona/website-project`).
+3.  **Dynamic Dev Server**: Updated the preview logic to inspect `package.json` scripts, choosing between `next dev` and `vite` and enforcing `--hostname 0.0.0.0` for external accessibility.
+4.  **Zombie Prevention**: Added explicit `process.exit()` and `clearInterval()` calls to ensure the worker completely stops after sending "complete" or "error" signals, preventing stale token 401 errors.
+
+### Rationale
+-   **Resilience**: The system now handles various agent initialization patterns without manual intervention.
+-   **Preview Accuracy**: Ensures the dev server always starts in the correct directory with proper network binding.
+-   **Resource Management**: Prevents background resource leakage in the Daytona sandbox.
