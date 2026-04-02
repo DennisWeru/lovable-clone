@@ -28,27 +28,44 @@ def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str,
             # If it's an arbitrary string like 'sid-xyz', generate a deterministic UUID
             conv_uuid = uuid.uuid5(uuid.NAMESPACE_OID, conv_id)
 
-    # 1. Try with id=
+    # 1. Try with conversation_id= (Primary for 1.16.0)
     try:
-        return Conversation(
-            agent=agent, 
-            workspace=workspace,
-            persistence_dir=persistence_dir,
-            id=conv_uuid
-        )
-    except TypeError as e:
-        log_status(f"Constructor with 'id' failed: {str(e)}", "status")
-    
-    # 2. Try with conversation_id=
-    try:
-        return Conversation(
+        conv = Conversation(
             agent=agent, 
             workspace=workspace,
             persistence_dir=persistence_dir,
             conversation_id=conv_uuid
         )
+        log_status("Safe creation success with 'conversation_id'", "status")
+        return conv
     except TypeError as e:
         log_status(f"Constructor with 'conversation_id' failed: {str(e)}", "status")
+
+    # 2. Try with id= (Fallback for some variants)
+    try:
+        conv = Conversation(
+            agent=agent, 
+            workspace=workspace,
+            persistence_dir=persistence_dir,
+            id=conv_uuid
+        )
+        log_status("Safe creation success with 'id'", "status")
+        return conv
+    except TypeError as e:
+        log_status(f"Constructor with 'id' failed: {str(e)}", "status")
+
+    # 3. Try with conv_id= (Found in some introspections)
+    try:
+        conv = Conversation(
+            agent=agent, 
+            workspace=workspace,
+            persistence_dir=persistence_dir,
+            conv_id=conv_uuid
+        )
+        log_status("Safe creation success with 'conv_id'", "status")
+        return conv
+    except TypeError as e:
+        log_status(f"Constructor with 'conv_id' failed: {str(e)}", "status")
 
     # 3. Try fallback - minimal arguments
     log_status("Falling back to minimal Conversation initialization", "status")
@@ -142,9 +159,8 @@ YOUR CORE DUTY:
                 # Silent failure for events to avoid crashing the main loop
                 pass
 
-        # Subscribe the listener
-        from openhands.core.event.event_stream import EventStreamSubscriber
-        conversation.event_stream.subscribe(EventStreamSubscriber.MAIN, on_event)
+        # Using string "main" to avoid 'No module named openhands.core' if EventStreamSubscriber is missing
+        conversation.event_stream.subscribe("main", on_event)
 
         log_status("Agent is thinking and executing tasks...", "progress")
         
