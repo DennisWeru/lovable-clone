@@ -314,3 +314,20 @@ A deep research review concluded that OpenHands provides superior, pre-optimized
 
 ### Result
 Maintained architectural stability and development velocity by avoiding a high-risk, "reinvent-the-wheel" refactor, while establishing a clear roadmap for future orchestration complexity.
+
+## 2026-04-02: OpenHands Alternatives Audit
+
+### Decision
+Conducted a comprehensive audit of alternatives to the **OpenHands SDK**. Validated that for the current **Lovabee Headless Backend**, OpenHands remains the most mature and programmable "engine" due to its dedicated SDK.
+
+### Rationale
+While alternatives like **Aider** (Terminal), **Claude Code** (CLI), and **Cline** (IDE) are powerful for individual developers, they are primarily built for interactive human-in-the-loop workflows. Replacing the `openhands-sdk` with these tools would require complex "wrapper" scripts to parse terminal output and would lose the structured event-stream feedback currently driving the Lovabee UI.
+
+### Plan
+1. Maintain **OpenHands SDK** as the core engine for background generation.
+2. Document the audit findings in `lovable-clone/docs/research/openhands_alternatives_audit.md`.
+3. Explore **Claude Code** as a secondary "Expert" engine for specific, high-complexity tasks if OpenHands hits limits.
+4. Monitor **Devika** for potential SDK stabilization as a long-term "lightweight" alternative.
+
+### Result
+Confirmed the current architectural choice as the most robust for a cloud-service model, while identifying specialized alternatives for different user interfaces.
