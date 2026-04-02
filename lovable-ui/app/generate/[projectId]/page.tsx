@@ -902,6 +902,12 @@ function GenerateContent({ projectId }: { projectId: string }) {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-400">Repository Name</label>
                 <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="my-awesome-project" className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors" required />
+                <div className="flex items-center gap-1.5 px-1">
+                  <svg className="w-3.5 h-3.5 text-amber-500/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <span className="text-[10px] text-gray-500 font-medium italic">Repository will be created as private by default</span>
+                </div>
               </div>
               {exportError && <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">{exportError}</div>}
               {exportUrl && <div className="p-4 bg-green-900/20 border border-green-800 rounded-lg space-y-2"><p className="text-green-400 text-sm font-medium">✨ Export Successful!</p><a href={exportUrl} target="_blank" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 text-xs font-mono break-all">{exportUrl}</a></div>}

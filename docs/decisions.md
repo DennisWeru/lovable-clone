@@ -345,3 +345,9 @@ Users sometimes need to manually reload the preview iframe if the development se
 
 ### Result
 Users can now reliably refresh the preview window with a single click, improving the debugging and verification workflow during the generation process.
+## Default Private GitHub Repositories (2026-04-02)
+To enhance security and privacy for users rapidly prototyping projects, we decided to make GitHub repository exports private by default.
+
+### Changes Made
+- **Backend API**: Updated `/api/export-github` to default `isPrivate` to `true`.
+- **UI**: Added a visual indicator and note in the "Export to GitHub" modal confirming that repositories will be created as private.

@@ -486,3 +486,10 @@ Implemented an intelligent progress reporting system:
 ### Rationale
 -   **Transparency**: Users can now understand *why* the agent is doing something, not just *what* tool it's using.
 -   **User Experience**: Layman-friendly language significantly reduces the perceived complexity of the generation process.
+
+## Default Private GitHub Repositories (2026-04-02)
+To enhance security and privacy for users rapidly prototyping projects, we decided to make GitHub repository exports private by default.
+
+### Changes Made
+- **Backend API**: Updated `/api/export-github` to default `isPrivate` to `true`.
+- **UI**: Added a visual indicator and note in the "Export to GitHub" modal confirming that repositories will be created as private.

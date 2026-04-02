@@ -7,7 +7,7 @@ export const maxDuration = 60; // Allow it time to push
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { projectId, sandboxId, githubToken, repoName, description, isPrivate = false } = body;
+    const { projectId, sandboxId, githubToken, repoName, description, isPrivate = true } = body;
 
     if (!projectId || !sandboxId || !githubToken || !repoName) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
