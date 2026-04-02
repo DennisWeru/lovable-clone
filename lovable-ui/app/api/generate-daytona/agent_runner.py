@@ -16,7 +16,7 @@ def log_status(message: str, type: str = "progress"):
 
 import uuid
 
-def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str, conv_id: str) -> Conversation:
+def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str, conv_id: str, callbacks: list = None) -> Conversation:
     """Safely create a conversation by trying multiple known argument patterns."""
     log_status(f"Inspecting Conversation signature: {inspect.signature(Conversation)}", "status")
     
@@ -34,7 +34,8 @@ def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str,
             agent=agent, 
             workspace=workspace,
             persistence_dir=persistence_dir,
-            conversation_id=conv_uuid
+            conversation_id=conv_uuid,
+            callbacks=callbacks
         )
         log_status("Safe creation success with 'conversation_id'", "status")
         return conv
@@ -47,29 +48,17 @@ def safe_create_conversation(agent: Agent, workspace: str, persistence_dir: str,
             agent=agent, 
             workspace=workspace,
             persistence_dir=persistence_dir,
-            id=conv_uuid
+            id=conv_uuid,
+            callbacks=callbacks
         )
         log_status("Safe creation success with 'id'", "status")
         return conv
     except TypeError as e:
         log_status(f"Constructor with 'id' failed: {str(e)}", "status")
 
-    # 3. Try with conv_id= (Found in some introspections)
-    try:
-        conv = Conversation(
-            agent=agent, 
-            workspace=workspace,
-            persistence_dir=persistence_dir,
-            conv_id=conv_uuid
-        )
-        log_status("Safe creation success with 'conv_id'", "status")
-        return conv
-    except TypeError as e:
-        log_status(f"Constructor with 'conv_id' failed: {str(e)}", "status")
-
     # 3. Try fallback - minimal arguments
     log_status("Falling back to minimal Conversation initialization", "status")
-    return Conversation(agent=agent, workspace=workspace)
+    return Conversation(agent=agent, workspace=workspace, callbacks=callbacks)
 
 async def main():
     prompt = os.getenv("GENERATION_PROMPT", "")
@@ -116,9 +105,8 @@ YOUR CORE DUTY:
         if not os.path.exists(persistence_dir):
             os.makedirs(persistence_dir, exist_ok=True)
 
-        conversation = safe_create_conversation(agent, project_dir, persistence_dir, conv_id)
-
         # 1.16.0 Subscription Pattern
+        # Using the native callbacks list as LocalConversation no longer has .event_stream
         def on_event(event: Any):
             try:
                 # 1. Capture Thought/Reasoning from the event itself (modern SDK)
@@ -159,8 +147,7 @@ YOUR CORE DUTY:
                 # Silent failure for events to avoid crashing the main loop
                 pass
 
-        # Using string "main" to avoid 'No module named openhands.core' if EventStreamSubscriber is missing
-        conversation.event_stream.subscribe("main", on_event)
+        conversation = safe_create_conversation(agent, project_dir, persistence_dir, conv_id, callbacks=[on_event])
 
         log_status("Agent is thinking and executing tasks...", "progress")
         
