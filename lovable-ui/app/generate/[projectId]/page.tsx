@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Suspense } from "react";
 
 interface Message {
+  id?: string;
   type: "user" | "claude_message" | "tool_use" | "tool_result" | "progress" | "error" | "complete";
   content?: string;
   name?: string;
@@ -44,6 +45,8 @@ function GenerateContent({ projectId }: { projectId: string }) {
   const [logs, setLogs] = useState<string>("");
   const [showConsole, setShowConsole] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+  const seenMessageIds = useRef<Set<string>>(new Set());
+  const [realtimeError, setRealtimeError] = useState(false);
 
   // GitHub Export State
   const [showExportModal, setShowExportModal] = useState(false);
@@ -104,6 +107,64 @@ function GenerateContent({ projectId }: { projectId: string }) {
     };
   }, [isGenerating, sandboxId]);
   
+  // Message Polling Fallback
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isGenerating && projectId) {
+      const pollMessages = async () => {
+        try {
+          const res = await fetch(`/api/project-messages?projectId=${projectId}`);
+          if (res.ok) {
+            const { messages: fetchedMsgs } = await res.json();
+            if (fetchedMsgs && fetchedMsgs.length > 0) {
+              const newMsgs: Message[] = [];
+              fetchedMsgs.forEach((m: any) => {
+                if (!seenMessageIds.current.has(m.id)) {
+                  seenMessageIds.current.add(m.id);
+                  const msg: Message = {
+                    id: m.id,
+                    type: m.type,
+                    content: m.content ?? undefined,
+                    message: m.content ?? undefined,
+                    name: m.metadata?.name,
+                    input: m.metadata?.input,
+                    previewUrl: m.metadata?.previewUrl,
+                    sandboxId: m.metadata?.sandboxId,
+                  };
+                  newMsgs.push(msg);
+                }
+              });
+
+              if (newMsgs.length > 0) {
+                setMessages((prev) => [...prev, ...newMsgs]);
+                
+                // Track if we got 'complete' or 'error' in polling
+                newMsgs.forEach(m => {
+                  if (m.type === "error" || m.type === "complete") {
+                    if (m.type === "complete") {
+                      if (m.previewUrl) setPreviewUrl(m.previewUrl);
+                      if (m.sandboxId) setSandboxId(m.sandboxId);
+                      setRegenCount((prev) => prev + 1);
+                    }
+                    setIsGenerating(false);
+                    if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
+                  }
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to poll messages", e);
+        }
+      };
+      
+      interval = setInterval(pollMessages, 5000); // Check every 5s
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGenerating, projectId]);
+  
   useEffect(() => {
     if (!projectId && !prompt && !initialSandboxId) {
       router.push("/");
@@ -126,15 +187,18 @@ function GenerateContent({ projectId }: { projectId: string }) {
           if (res.ok) {
             const { messages: historyMsgs } = await res.json();
             if (historyMsgs && historyMsgs.length > 0) {
-              setMessages(
-                historyMsgs.map((m: any) => ({
+              const formattedHistory = historyMsgs.map((m: any) => {
+                seenMessageIds.current.add(m.id);
+                return {
+                  id: m.id,
                   type: m.type,
                   content: m.content ?? undefined,
                   name: m.metadata?.name,
                   input: m.metadata?.input,
                   isHistory: true,
-                }))
-              );
+                };
+              });
+              setMessages(formattedHistory);
             }
           }
         } catch (e) {
@@ -216,7 +280,16 @@ function GenerateContent({ projectId }: { projectId: string }) {
           (payload) => {
             console.log("[Generate] Realtime Event Received:", payload);
             const newMessage = payload.new as any;
+            
+            // Deduplicate
+            if (seenMessageIds.current.has(newMessage.id)) {
+              console.log("[Generate] Duplicate message ignored:", newMessage.id);
+              return;
+            }
+            seenMessageIds.current.add(newMessage.id);
+
             const message: Message = {
+              id: newMessage.id,
               type: newMessage.type,
               content: newMessage.content ?? undefined,
               message: newMessage.content ?? undefined,
@@ -225,7 +298,7 @@ function GenerateContent({ projectId }: { projectId: string }) {
               previewUrl: newMessage.metadata?.previewUrl,
               sandboxId: newMessage.metadata?.sandboxId,
             };
-
+            
             if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
 
             if (message.type === "error") {
@@ -245,9 +318,11 @@ function GenerateContent({ projectId }: { projectId: string }) {
         .subscribe((status) => {
           console.log(`[Generate] Realtime Subscription Status for ${currentProjectId}:`, status);
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            if (loadingStuckTimerRef.current) clearTimeout(loadingStuckTimerRef.current);
-            setError({ message: "Realtime connection failed. Updates may not appear automatically." });
-            setIsGenerating(false);
+            setRealtimeError(true);
+            // DO NOT stop generation - let polling fallback take over
+            console.warn("[Generate] Realtime degraded, falling back to polling...");
+          } else if (status === "SUBSCRIBED") {
+            setRealtimeError(false);
           }
         });
 
@@ -622,7 +697,15 @@ function GenerateContent({ projectId }: { projectId: string }) {
                   <div className="absolute inset-0 w-5 h-5 rounded-full border-2 border-t-amber-500 animate-spin" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-0.5">Current Activity</p>
+                  <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-0.5 flex items-center gap-2">
+                    Current Activity
+                    {realtimeError && (
+                      <span className="flex items-center gap-1 text-[10px] text-gray-500 font-normal lowercase normal-case bg-gray-800 px-1.5 py-0.5 rounded animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+                        polling fallback active
+                      </span>
+                    )}
+                  </p>
                   <p className="text-gray-300 text-sm truncate">
                     {(() => {
                       const lastTool = [...messages].reverse().find(m => m.type === "tool_use");

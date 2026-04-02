@@ -361,112 +361,95 @@ Performed a global cleanup of `worker.mjs` to remove all backslash escapes from 
 - **JS Execution**: In a standalone `.mjs` file, template literals are standard syntax and must not have backslashes before the `${` if interpolation is desired.
 - **Shell Compatibility**: Ensuring the commands constructed for `spawn` and `execSync` have the actual values (like the path to the `openhands` binary) is critical for the agent loop to function in the sandbox.
 
+## Fix Daytona uv Agent Stuck Issue (2026-04-01)
 
+### Problem
+The `uv` installer via `curl | sh` was hanging indefinitely in the Daytona environment due to IPv6 DNS blackholes.
 
-
-## Fix Daytona uv Agent Stuck Issue
-
-- Replaced the curl | sh installer with a direct binary download and a fallback to apt-get + pip-installed uv because the inner curl inside astral.sh install.sh would hang indefinitely on IPv6 DNS blackholes in the Daytona container.
-- Removed --python 3.12 from uv venv invocation to prevent uv from attempting standalone python downloads, which is unneeded on Ubuntu 24.04 and could trigger additional network timeouts.
+### Solution
+- Replaced the curl | sh installer with a direct binary download and a fallback to apt-get + pip-installed uv.
+- Removed --python 3.12 from uv venv invocation to prevent uv from attempting standalone python downloads.
 
 ## URL Structure Change and Project Creation Logic (2026-04-01)
 
 ### Problem
-The application previously used a flat URL structure for generation (`/generate?prompt=...`), which made it difficult to link back to specific projects or maintain a clean browser history. Additionally, there was no clear separation between "initial project creation" and "ongoing generation".
+The application previously used a flat URL structure for generation (`/generate?prompt=...`), which made it difficult to link back to specific projects.
 
 ### Solution
 Implemented a dynamic routing structure and a dedicated project creation API:
 1.  **Dynamic Route**: Moved the generation page from `app/generate/page.tsx` to `app/generate/[projectId]/page.tsx`.
-2.  **Dedicated API**: Created `app/api/projects/route.ts` to handle initial project record creation (POST) independently of the generation process.
-3.  **Handoff Logic**: Updated the home page to create a project first, then redirect to the project-specific URL with the initial prompt as a query parameter.
-4.  **Dashboard Integration**: Updated the dashboard to use the new project-specific URLs for "Continue" and "View" actions.
-
-### Changes
--   **New Files**:
-    -   `app/api/projects/route.ts`: API for creating projects.
-    -   `app/generate/[projectId]/page.tsx`: Dynamic route for project-specific generation and preview.
--   **Modified Files**:
-    -   `app/page.tsx`: Updated `handleGenerate` to call the project API first.
-    -   `app/dashboard/page.tsx`: Updated `Link` components to use the new URL structure.
-    -   `app/generate/page.tsx`: Now acts as a redirector to the home page (fallback).
+2.  **Dedicated API**: Created `app/api/projects/route.ts` to handle initial project record creation (POST).
+3.  **Handoff Logic**: Updated the home page to create a project first, then redirect.
 
 ### Rationale
--   **Clean URLs**: `/generate/:projectId` is more standard for web applications and makes project sharing/resuming more intuitive.
--   **Separation of Concerns**: Decoupling project creation from the generation logic allows for better state management and a smoother user flow (e.g., creating a project even if the initial generation fails or is delayed).
+-   **Clean URLs**: `/generate/:projectId` is more standard and intuitive.
+-   **Separation of Concerns**: Decoupling project creation from generation allows for better state management.
 
-### 2026-04-01: Fixing OpenHands SDK Conversation Initialization Error
-
-#### Issue Diagnosis
-The OpenHands SDK runner (`agent_runner.py`) crashed with the error: `Agent Error: Conversation.__new__() got an unexpected keyword argument 'sid'`. This happened during the attempt to instantiate the `Conversation` class. In the current OpenHands SDK (v0.12.0+), the `Conversation` class uses a factory pattern and its constructor does not accept `conversation_id` or `sid` as direct keyword arguments.
-
-#### Solution Implementation
-1.  **Factory Pattern Adoption**: Refactored `agent_runner.py` to use `Conversation.create(...)` instead of the `Conversation(...)` constructor.
-2.  **Keyword Mapping**: Changed `conversation_id=sid` to `id=conv_id` to match the expected signature of the `create` method.
-3.  **Sanitization**: Renamed the local variable `sid` to `conv_id` to prevent any potential conflicts with internal SDK logic that might still look for a `sid` attribute in certain contexts.
-4.  **Verification**: Confirmed that the `conv_id` (derived from `OPENHANDS_SID` in the API route) is correctly passed as the `id` for identifying and persisting the conversation state in the `.openhands_state` directory.
-
-#### Rationale
--   **SDK Stability**: Aligning with the documented factory pattern ensures the agent works across different minor versions of the OpenHands SDK.
-
-### 2026-04-01: Correcting OpenHands SDK Installation and Initialization Robustness
-
-#### Issue Diagnosis
-1.  **SDK Package Mismatch**: The worker was installing `openhands`, which is primarily the CLI/TUI package. The programmatic SDK is contained in `openhands-sdk`. This led to missing methods (like `.create()`) and potentially outdated signature definitions.
-2.  **Signature Inconsistency**: The initialization of the `Conversation` factory is highly version-dependent within the OpenHands ecosystem, frequently toggling between keyword argument names like `id`, `conversation_id`, and `sid`.
-
-#### Solution Implementation
-1.  **Package Correction**: Updated `worker.mjs` to target `openhands-sdk==1.16.0` and `openhands-tools` directly.
-2.  **Robust In-Process Introspection**: Refactored `agent_runner.py` to use a `safe_create_conversation` pattern. This helper function uses `inspect.signature` to log the exact constructor requirements for later debugging and proactively retries multiple initialization patterns (with `id`, then `conversation_id`, then finally fallback to a minimal signature).
-3.  **Namespace Clarity**: Unified all references to the session/conversation ID under the `conv_id` variable to prevent any accidental collision with the Python `id` keyword or the legacy `sid` argument name.
-
-#### Rationale
--   **Future-Proofing**: This approach makes the agent runner "blindly compatible" with a wider range of OpenHands SDK versions without requiring manual updates for every upstream minor release.
-
-### 2026-04-01: Fixing Conversation UUID Type Error
-
-#### Issue Diagnosis
-After locking the `openhands-sdk` to version `1.16.0`, the agent runner failed with `Agent Error: 'str' object has no attribute 'hex'`. The SDK introspection revealed that the `Conversation` factory explicitly expects `conversation_id: uuid.UUID | None` rather than a standard string. Because `worker.mjs` was passing a string environment variable (`OPENHANDS_SID`), the SDK's internal persistence logic crashed when trying to serialize the ID.
-
-#### Solution Implementation
-1. **Runtime Type Casting**: Updated `safe_create_conversation` in `agent_runner.py` to import the standard `uuid` library.
-2. **Deterministic UUID Generation**: Implemented a try-catch block that first attempts to cast the `conv_id` directly to a `uuid.UUID`. If it fails (because the `id` is an arbitrary string like `sid-12345678`), it uses `uuid.uuid5(uuid.NAMESPACE_OID, conv_id)` to generate a valid, deterministic UUID structure based on the string.
-3. **Constructor Injection**: Passed the resulting `conv_uuid` object into the fallback constructors (`id=` and `conversation_id=`).
-
-#### Result
-The `Conversation` factory now receives the exact data type it requires, eliminating the deep internal serialization crash, while simultaneously maintaining a deterministic link to the user's project ID for session resumption.
-
-## Documenting OpenHands SDK & CLI Integration for Autonomous Operation (2026-04-01)
-
-### Decision
-Renamed and expanded the dedicated skill (`.agents/skills/openhands/SKILL.md`) to thoroughly document the OpenHands **SDK** usage within the Lovabee architecture. The docs now explicitly capture and provide solutions for critical instantiation errors, specifically `unexpected keyword argument 'sid'` and `'str' object has no attribute 'hex'`.
-
-### Rationale
-Consulting the OpenHands SDK documentation (`https://docs.openhands.dev/sdk`) revealed that the programmatic `Conversation` constructor enforces structural typing that wasn't immediately apparent. Namely:
-1.  The session identifier is strictly named `conversation_id` (breaking legacy code using `sid`).
-2.  The identifier must be a valid Python `uuid.UUID` object, as strings crash the internal hex serializer used for persistence.
-By centrally documenting this SDK boilerplate and explicitly acknowledging these known pitfalls, future iterations of the `agent_runner.py` can be scaled securely without regressing on deterministic conversational persistence.
-
-## Persistent Daytona Sandboxes and Project Continuity (2026-04-02)
+## Fixing OpenHands SDK Conversation Initialization (2026-04-01)
 
 ### Problem
-When users reopened a project from the dashboard, the AI agent would frequently recreate the website from scratch. This was caused by two issues:
-1.  **Sandbox Volatility**: Daytona sandboxes were being deleted or reset after inactivity, leading to an empty workspace.
-2.  **Context Loss**: The AI was given the original "Create..." prompt in an empty folder, causing it to re-initialize the project.
+The OpenHands SDK runner crashed with `'sid'` unexpected keyword argument.
 
 ### Solution
-Implemented a multi-layered persistence and continuity strategy:
-1.  **Sandbox Persistence**: The `sandbox_id` is now stored in the `projects` table. The API attempts to "wake up" the existing sandbox using `sandbox.start()` if it's found, preserving the exact file state.
-2.  **Core Memory Pattern**: Standardized `decisions.md` as the agent's "Core Memory". The agent is strictly instructed to read/write to this file to maintain architectural continuity across sessions.
-3.  **Cloud Backups (Supabase)**: Implemented an automated backup system in the generation worker. At the end of every successful run, the project is zipped (excluding `node_modules`) and uploaded to Supabase Storage (`project-backups` bucket).
-4.  **Auto-Recovery**: If a project is resumed but the sandbox is fresh/empty, the worker automatically downloads and extracts the latest backup from Supabase before the AI agent starts.
-5.  **Resume Prompting**: Introduced an `IS_RESUME` flag that modifies the agent's initial instructions to: *"Here is the existing code and the decisions we made previously... Do not recreate it; just continue..."*
+- **Factory Pattern**: Refactored `agent_runner.py` to use `Conversation.create()`.
+- **Keyword Mapping**: Changed `conversation_id` to `id`.
 
-### Changes
--   **API Route**: `app/api/generate-daytona/route.ts` now handles sandbox retrieval, starting, and credential passing for backups.
--   **Worker Script**: `app/api/generate-daytona/worker.mjs` now includes `backupProject()` and `restoreProject()` logic using raw `fetch` to the Supabase Storage API.
--   **Agent Runner**: `app/api/generate-daytona/agent_runner.py` now includes a strict system prompt enforcing the `decisions.md` pattern.
+## Correcting OpenHands SDK Installation Robustness (2026-04-01)
+
+### Problem
+The worker was installing the wrong package (`openhands` instead of `openhands-sdk`).
+
+### Solution
+- **Package Correction**: Updated `worker.mjs` to target `openhands-sdk==1.16.0`.
+- **Introspection**: Added `safe_create_conversation` with `inspect.signature` support.
+
+## Fixing Conversation UUID Type Error (2026-04-01)
+
+### Problem
+The SDK expected a `uuid.UUID` object but received a string.
+
+### Solution
+- **Type Casting**: Updated `agent_runner.py` to cast or generate a deterministic UUID using `uuid.uuid5`.
+
+## OpenHands Event-Driven Progress Updates (2026-04-02)
+
+### Problem
+The Lovabee agent was a "black box" during execution, displaying generic looping messages while the real work (writing files, running commands) was hidden.
+
+### Solution
+Transitioned to an event-driven progress system:
+1.  **Event Stream**: Modified `agent_runner.py` to subscribe to the OpenHands `event_stream`, capturing `ActionEvent` and `ObservationEvent`.
+2.  **Granular Logging**: The runner now emits JSON events for every tool use and result.
+3.  **Frontend Integration**: Updated the worker to forward these events to the UI, suppressing generic messages during active work.
 
 ### Rationale
--   **Reliability**: Even if the primary sandbox is purged by Daytona, the user's code is safe in Supabase and can be restored seamlessly.
--   **Agent Intelligence**: By forcing the agent to read a "Decision Log," we simulate the behavior of a human developer joining an existing project, preventing redundant work.
--   **Cost Efficiency**: Reusing sandboxes reduces the overhead of re-installing large dependencies like `openhands-sdk` on every project load.
+-   **Transparency**: Users can now see exactly what the agent is doing (e.g., "Writing index.tsx").
+-   **Trust**: Real-time feedback significantly improves the perceived reliability of the agent.
+
+## Polling Fallback for Realtime Synchronization (2026-04-02)
+
+### Problem
+The Supabase Realtime WebSocket connection frequently timed out or returned `CHANNEL_ERROR` during long-running tasks. This caused the UI to stop updating even if the worker was still active.
+
+### Solution
+Implemented a redundant message synchronization system:
+1.  **Deduplicated State**: Introduced `seenMessageIds` tracking.
+2.  **Polling Fallback**: Added a 5-second polling interval as a safety net.
+3.  **Non-Fatal Subscription**: Refactored the Realtime subscriber to be advisory only.
+
+### Rationale
+-   **Reliability**: Projects can now survive transient network issues or Realtime outages.
+
+## Terminating Zombie Workers to Prevent 401 Token Errors (2026-04-02)
+
+### Problem
+Hitting "Retry" generated a new `webhook_token`, but the old worker process remained active, sending updates with stale tokens that resulted in 401 Unauthorized errors.
+
+### Solution
+Implemented mandatory session cleanup in `app/api/generate-daytona/route.ts`:
+1.  **Session Purge**: Added `sandbox.process.deleteSession(sessionId)` before starting a new worker.
+2.  **Deterministic ID**: Ensures any previous process for the same project is explicitly terminated.
+
+### Rationale
+-   **Security**: Prevents unauthorized updates from old processes.
+-   **Stability**: Eliminates log interleaving and flickering status updates.

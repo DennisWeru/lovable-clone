@@ -171,6 +171,15 @@ export async function POST(req: NextRequest) {
     await sandbox.fs.uploadFile(Buffer.from(envFileContent), "/home/daytona/worker-env.sh");
 
     const sessionId = `gen-${projectRecord.id.slice(0, 8)}`;
+
+    // Cleanup previous session to avoid zombie workers (which would cause 401 token errors)
+    try {
+      console.log(`[API] Cleaning up existing session if any: ${sessionId}`);
+      await sandbox.process.deleteSession(sessionId);
+    } catch (e) {
+      // Session likely doesn't exist or already closed
+    }
+
     try { await sandbox.process.createSession(sessionId); } catch (e) {}
 
     await sandbox.process.executeSessionCommand(sessionId, {
