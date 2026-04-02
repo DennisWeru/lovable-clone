@@ -110,21 +110,67 @@ As the project evolved to include complex agent runners in both TypeScript and P
 
 #### Result
 The codebase now uses a unified, hardened pattern for sandbox management, reducing the risk of environment-induced hangs and making the agent's sandbox interactions significantly more predictable and observable.
-113: 
-114: ### 2026-04-02: Enhancing Granular Agent Progress Reporting
-115: 
-116: #### Issue Diagnosis
-117: Users were seeing "generic" progress messages (e.g., "The Lovabee agent is busy...") during the generation process. This was due to:
-118: 1. **Data Type Mismatch**: The agent runner used `type="status"` for initialization, which the worker ignored.
-119: 2. **Silent Thinking**: Long LLM "thinking" periods triggered the worker's fallback generic message rotation because no intermediate updates were received.
-120: 3. **Surface-Level Event Parsing**: The `agent_runner.py` didn't fully extract internal reasoning/thoughts from the OpenHands event stream.
-121: 
-122: #### Solution Implementation
-123: 1. **Protocol Alignment**: Standardized on `type="progress"` for all informative updates in `agent_runner.py`.
-124: 2. **Deep Event Inspection**: Updated the Python `on_event` handler to check for `reasoning_content` and `thought` fields within the OpenHands event objects.
-125: 3. **Active Heartbeat**: Implemented a periodic progress update from the agent to the worker to keep the UI "alive" with specific context during long-running tasks.
-126: 4. **Worker Robustness**: Updated `worker.mjs` to handle both `status` and `progress` types and suppress generic rotation as long as any valid agent output is received.
-127: 5. **UI Optimization**: Refined the frontend's "Current Activity" logic to prioritize specific agent thoughts over generic startup messages.
-128: 
-129: #### Result
-130: The UI now provides a high-fidelity trace of the agent's actual reasoning and actions, significantly improving the perceived responsiveness and transparency of the generation process.
+
+### 2026-04-02: Enhancing Granular Agent Progress Reporting
+
+#### Issue Diagnosis
+Users were seeing "generic" progress messages (e.g., "The Lovabee agent is busy...") during the generation process. This was due to:
+1. **Data Type Mismatch**: The agent runner used `type="status"` for initialization, which the worker ignored.
+2. **Silent Thinking**: Long LLM "thinking" periods triggered the worker's fallback generic message rotation because no intermediate updates were received.
+3. **Surface-Level Event Parsing**: The `agent_runner.py` didn't fully extract internal reasoning/thoughts from the OpenHands event stream.
+
+#### Solution Implementation
+1. **Protocol Alignment**: Standardized on `type="progress"` for all informative updates in `agent_runner.py`.
+2. **Deep Event Inspection**: Updated the Python `on_event` handler to check for `reasoning_content` and `thought` fields within the OpenHands event objects.
+3. **Active Heartbeat**: Implemented a periodic progress update from the agent to the worker to keep the UI "alive" with specific context during long-running tasks.
+4. **Worker Robustness**: Updated `worker.mjs` to handle both `status` and `progress` types and suppress generic rotation as long as any valid agent output is received.
+5. **UI Optimization**: Refined the frontend's "Current Activity" logic to prioritize specific agent thoughts over generic startup messages.
+
+#### Result
+The UI now provides a high-fidelity trace of the agent's actual reasoning and actions, significantly improving the perceived responsiveness and transparency of the generation process.
+
+### 2026-04-02: Finalizing OpenHands SDK 1.16.0 Compatibility
+
+#### Issue Diagnosis
+1. **Missing 'core' Module**: After locking the SDK to `1.16.0`, the agent runner failed with `No module named 'openhands.core'` at the point of importing `EventStreamSubscriber`. This is likely because the `openhands-sdk` distribution is a lightweight client and does not include the full framework's core modules.
+2. **Initialization Noise**: The `safe_create_conversation` helper was prioritizing `id` as the keyword argument, which is deprecated or name-clashed in 1.16.0. While the fallback worked, it generated confusing error logs in the Agent Console.
+
+#### Solution Implementation
+1. **String-Based Subscription**: Replaced the use of the `EventStreamSubscriber.MAIN` enumeration with a direct string constant `"main"`. The OpenHands `EventStream.subscribe()` method accepts either an enumeration or a string identifier. This eliminates the dependency on the internal `openhands.core` package.
+2. **Signature Alignment**: Re-prioritized `conversation_id` as the primary keyword argument in `safe_create_conversation`, followed by `id` and `conv_id`. This aligns with the inspected signature of the 1.16.0 SDK and ensures a "clean" initialization without reporting recoverable TypeErrors to the console.
+3. **Robust Success Logging**: Added explicit success logs (`Safe creation success with '...'`) to confirm which initialization path was taken.
+
+#### Result
+The agent runner now initializes and subscribes to the event stream successfully without requiring the presence of framework-internal packages, providing a stable path for generation and real-time thought reporting.
+
+### 2026-04-02: Migrating to Native Callback Initialization
+
+#### Issue Diagnosis
+After resolving the import errors, the agent runner encountered `AttributeError: 'LocalConversation' object has no attribute 'event_stream'`. This is due to a signature refactor in `openhands-sdk==1.16.0` (and later) where the `event_stream` property was removed from the `Conversation` classes. Instead, the SDK now expects event handlers to be provided as a list of `callbacks` during object instantiation.
+
+#### Solution Implementation
+1. **Callback Injection**: Refactored `agent_runner.py` to define the `on_event` handler before the conversation is created.
+2. **Helper Update**: Updated `safe_create_conversation` to accept a `callbacks` parameter and pass it into the `Conversation` constructor.
+3. **Clean Decoupling**: Removed the `conversation.event_stream.subscribe` call entirely. The SDK now handles the event registration natively during the construction phase.
+
+#### Result
+The initialization process is now fully aligned with the modular architecture of the modern OpenHands SDK. The agent starts reliably, and granular progress updates are correctly piped to the UI through the injected callbacks.
+
+### 2026-04-02: Hardening Agent Initialization and Context
+
+#### Issue Diagnosis
+The generation failure "no package.json found" was occurring because the OpenHands agent sometimes skipped the project initialization step (`npm create vite`) when starting in an empty directory. Additionally, when resuming or iterating, the agent lacked explicit context about the existing codebase, leading to potential redundancies or inconsistent state management.
+
+#### Solution Implementation
+1. **Explicit Initialization**:
+    - Updated `worker.mjs` to check for `package.json` and project files before starting the agent.
+    - If the directory is empty or missing `package.json`, an "IMPORTANT: Force Initialization" instruction is prepended to the agent's prompt, mandating the use of `npm create vite@latest . -- --template react-ts --no-interactive`.
+2. **Context Enrichment**:
+    - Implemented `getProjectContext` helper in `worker.mjs` to scan the workspace (limiting to 50 files for LLM token efficiency) and read `decisions.md`.
+    - If the directory is NOT empty, a "CONTEXT" block is prepended to the prompt, listing available files and historical decisions, ensuring the agent has a clear understanding of the existing architecture and goals.
+3. **System Prompt Hardening**:
+    - Updated `agent_runner.py` system prompt to explicitly prioritize terminal-based initialization if `package.json` is missing.
+    - Re-emphasized the mandatory use of non-interactive flags (`-y`, `--no-interactive`) to prevent environment hangs.
+
+#### Result
+The agent is now forced to establish a standard project structure before implementing features, eliminating the "no package.json" error. Resumed sessions are significantly more context-aware, reducing hallucinations and improving continuity across multiple generation turns.

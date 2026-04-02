@@ -102,6 +102,21 @@ function flattenProject(sourceDir, targetDir) {
   }
 }
 
+function getProjectContext(dir) {
+  try {
+    const files = fs.readdirSync(dir, { recursive: true });
+    const fileList = files.filter(f => !f.includes("node_modules") && !f.startsWith(".")).slice(0, 50); // Limit to 50 files
+    let decisions = "";
+    const decisionsPath = path.join(dir, "decisions.md");
+    if (fs.existsSync(decisionsPath)) {
+      decisions = fs.readFileSync(decisionsPath, "utf8");
+    }
+    return { fileList, decisions };
+  } catch (e) {
+    return { fileList: [], decisions: "" };
+  }
+}
+
 const projectDir = "/home/daytona/website-project";
 if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
@@ -236,8 +251,30 @@ async function main() {
 
 async function runAgentSDK(pythonPath) {
   let finalPrompt = PROMPT;
+  const projectFiles = fs.readdirSync(projectDir).filter(f => f !== ".DS_Store" && f !== "CLAUDE.md" && f !== ".openhands_state");
+  const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
+
+  if (projectFiles.length === 0 || !hasPackageJson) {
+      console.log("[Worker] Project directory is empty or missing package.json. Prepending initialization instruction.");
+      finalPrompt = `IMPORTANT: The project directory is currently empty or missing package.json. You MUST first initialize a Vite project using 'npm create vite@5 . -- --template react-ts --no-interactive' before implementing the user's request. Also ensure you use '--no-package-lock' and '--no-audit' for any subsequent installs to optimize speed. AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.\n\nUser Request: ${PROMPT}`;
+  } else {
+      console.log("[Worker] Project directory is not empty. Providing context to agent.");
+      const { fileList, decisions } = getProjectContext(projectDir);
+      finalPrompt = `CONTEXT: You are continuing work on an existing project.
+AVAILABLE FILES:
+${fileList.join("\n")}
+
+EXISTING DECISIONS:
+${decisions || "No previous decisions found."}
+
+CURRENT GOAL: ${PROMPT}
+
+Please continue from where you left off. Do not recreate existing files unless necessary. AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.`;
+  }
+
   if (IS_RESUME) {
-    finalPrompt = `Here is the existing code and the decisions we made previously from decisions.md. Do not recreate it; just continue from where you left off or start dev server and wait for further instructions.\n\nOriginal Task: ${PROMPT}`;
+    // If it's a resume but we already handled it above, we can just ensure IS_RESUME doesn't override it with a simpler prompt
+    // The logic above is more comprehensive.
   }
 
   const env = { 

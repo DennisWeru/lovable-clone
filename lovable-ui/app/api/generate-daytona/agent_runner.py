@@ -92,10 +92,13 @@ async def main():
 YOUR CORE DUTY:
 1. ALWAYS maintain a `decisions.md` file in the root directory.
 2. At the start of EVERY task, read `decisions.md` and `CLAUDE.md` to understand context.
-3. NEVER recreate the project if files already exist.
-4. Document all major architectural changes, new dependencies, and feature implementations in `decisions.md`.
-5. Use React, Vite, and Tailwind CSS for all projects.
-6. Target port 3000 for the development server."""
+3. If `package.json` is missing, YOU MUST initialize the project using the terminal first (e.g., `npm create vite@5 . -- --template react-ts --no-interactive`).
+4. NEVER recreate the project if files already exist.
+5. Document all major architectural changes, new dependencies, and feature implementations in `decisions.md`.
+6. Use React, Vite 5, and Tailwind CSS for all projects.
+7. Use `--no-package-lock` and `--no-audit` for all npm commands to optimize for the sandbox environment.
+8. AFTER generation and before finishing, YOU MUST run `npm run lint` and TypeScript checks (e.g., `npx tsc --noEmit`) to ensure there are no errors. Fix any issues found.
+9. Target port 3000 for the development server."""
         )
 
         log_status("Starting conversation loop...")
