@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     if (!sandbox) {
       console.log("[API] Creating brand new sandbox...");
       sandbox = await daytona.create({
-        public: false,
+        public: true,
         image: "mcr.microsoft.com/playwright:v1.49.0-noble",
         resources: { cpu: 2, memory: 4, disk: 5 },
         autoStopInterval: 60

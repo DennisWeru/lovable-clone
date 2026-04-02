@@ -269,3 +269,15 @@ The agent was frequently "starting from scratch" or failing to establish a consi
 #### Result
 The generation pipeline is now deterministic. The AI agent no longer handles project scaffolding, resulting in 100% consistent architecture across all generated projects and significant improvements in reliability for iterative follow-up requests.
 ****
+
+## FIX: Broken Preview Window Auth Error (2026-04-02)
+
+### Decision
+Switched Daytona sandbox creation from `public: false` to `public: true` in the `generate-daytona` API.
+
+### Rationale
+The "Live Preview" iframe was failing with a 400 "authentication state verification failed" error because private sandboxes require a session cookie for the Daytona domain. These cookies often fail to be sent or validated inside an iframe due to `SameSite` restrictions or cross-origin security policies. Making the sandbox public allows the preview URL to be accessed directly without an authentication redirect, which is the standard pattern for embedded preview windows.
+
+### Plan
+1. Update `lovable-ui/app/api/generate-daytona/route.ts` to set `public: true` in `daytona.create()`.
+2. Verified that `restart-server/route.ts` already has robust fallback logic for preview URLs.
