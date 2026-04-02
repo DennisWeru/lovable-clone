@@ -329,5 +329,19 @@ While alternatives like **Aider** (Terminal), **Claude Code** (CLI), and **Cline
 3. Explore **Claude Code** as a secondary "Expert" engine for specific, high-complexity tasks if OpenHands hits limits.
 4. Monitor **Devika** for potential SDK stabilization as a long-term "lightweight" alternative.
 
+
+## Manual Preview Refresh Button (2026-04-02)
+
+### Decision
+Added a "Refresh" button to the live preview header in the generation interface.
+
+### Rationale
+Users sometimes need to manually reload the preview iframe if the development server is slow to respond, or if they suspect the iframe has entered a stale state. While the system automatically refreshes on generation completion, a manual trigger provides a better user experience for verification without needing a full page reload or a new AI turn.
+
+### Implementation Details
+- **Trigger**: The button increments the `regenCount` state.
+- **Mechanism**: The `<iframe>` uses `key={`preview-${regenCount}`}`, so incrementing the key forces React to unmount and remount the iframe, triggering a clean reload of the `src` URL.
+- **UI**: Added the button to the right side of the preview header with a standard "rotate" icon, styled to match the existing "Export" and "Open in browser" actions.
+
 ### Result
-Confirmed the current architectural choice as the most robust for a cloud-service model, while identifying specialized alternatives for different user interfaces.
+Users can now reliably refresh the preview window with a single click, improving the debugging and verification workflow during the generation process.
