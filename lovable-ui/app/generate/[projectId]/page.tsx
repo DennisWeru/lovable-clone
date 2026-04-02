@@ -47,6 +47,8 @@ function GenerateContent({ projectId }: { projectId: string }) {
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const seenMessageIds = useRef<Set<string>>(new Set());
   const [realtimeError, setRealtimeError] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // GitHub Export State
   const [showExportModal, setShowExportModal] = useState(false);
@@ -243,6 +245,78 @@ function GenerateContent({ projectId }: { projectId: string }) {
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, router, initialSandboxId, initialPreviewUrl, projectId]);
+
+  const fetchProjectDetails = async () => {
+    if (!projectId) return;
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("projects")
+        .select("last_synced_at")
+        .eq("id", projectId)
+        .single();
+      
+      if (data?.last_synced_at) {
+        setLastSyncedAt(data.last_synced_at);
+      }
+    } catch (e) {
+      console.error("Failed to fetch project details", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchProjectDetails();
+    const interval = setInterval(fetchProjectDetails, 10000); // Polling for status updates every 10s
+    return () => clearInterval(interval);
+  }, [projectId]);
+
+  const handleManualSync = async () => {
+    if (isGenerating || isSyncing || !projectId) return;
+    
+    try {
+      setIsSyncing(true);
+      setError(null);
+      
+      const response = await fetch("/api/generate-daytona", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          prompt: "Manual sync request", 
+          projectId, 
+          sandboxId,
+          mode: "backup",
+          force: true
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to trigger sync");
+      }
+      
+      // The worker will send a 'progress' message with 'Syncing...' 
+      // and update the DB when done.
+    } catch (err: any) {
+      setError({ message: err.message || "Failed to start sync" });
+    } finally {
+      // We don't set isSyncing false here immediately because we want to wait for the progress message
+      // But for safety, let's allow another click after 30s if nothing happens
+      setTimeout(() => setIsSyncing(false), 30000);
+    }
+  };
+
+  function timeAgo(dateStr: string) {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
   
   const generateWebsite = async (currentPrompt: string, skipAgent = false) => {
     console.log("[Generate] Starting generation for prompt:", currentPrompt);
@@ -337,6 +411,10 @@ function GenerateContent({ projectId }: { projectId: string }) {
               setRegenCount((prev) => prev + 1); // Force iframe refresh
               setIsGenerating(false);
               channel.unsubscribe();
+            } else if (message.type === "progress" && (message.content || "").includes("Syncing")) {
+              setIsSyncing(true);
+              // We'll reset it when we stop seeing the syncing message or after a timeout
+              setTimeout(() => setIsSyncing(false), 20000);
             } else {
               setMessages((prev) => {
                 // Optimistic UI merge: if we have a user message with the same content and no ID, replace it
@@ -657,15 +735,30 @@ function GenerateContent({ projectId }: { projectId: string }) {
               </h2>
               <p className="text-gray-400 text-xs mt-1 truncate max-w-[200px]">{prompt}</p>
             </div>
-            <button 
-              onClick={() => setShowConsole(!showConsole)}
-              className={`p-1.5 rounded-md border transition-colors ${showConsole ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'border-gray-800 text-gray-400 hover:text-gray-300'}`}
-              title="Toggle Agent Console"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={handleManualSync}
+                disabled={isGenerating || isSyncing}
+                className={`p-1.5 rounded-md border transition-colors flex items-center gap-1.5 ${isSyncing ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'}`}
+                title={isSyncing ? "Syncing to cloud..." : "Sync to Supabase"}
+              >
+                <svg className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                </svg>
+                {lastSyncedAt && !isSyncing && (
+                  <span className="text-[10px] font-medium hidden md:inline">{timeAgo(lastSyncedAt)}</span>
+                )}
+              </button>
+              <button 
+                onClick={() => setShowConsole(!showConsole)}
+                className={`p-1.5 rounded-md border transition-colors ${showConsole ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'border-gray-800 text-gray-400 hover:text-gray-300'}`}
+                title="Toggle Agent Console"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-4 overflow-x-hidden">

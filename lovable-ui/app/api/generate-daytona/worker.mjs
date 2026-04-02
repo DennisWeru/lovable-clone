@@ -16,6 +16,7 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 const TEMPLATE_REPO_URL = process.env.TEMPLATE_REPO_URL || "https://gitlab.com/weruDennis/reactvitetemplate.git";
 const TEMPLATE_REPO_BRANCH = process.env.TEMPLATE_REPO_BRANCH || "main";
 const SKIP_AGENT = process.env.SKIP_AGENT === "true";
+const MODE = process.env.MODE || "full"; // "full" or "backup"
 
 const FRIENDLY_MESSAGES = [
   "Bee-zy building your dream site... 🐝",
@@ -481,6 +482,7 @@ async function backupProject() {
   
   try {
     lastUpdateAt = Date.now();
+    await sendUpdate("progress", { message: "🍯 Syncing: Storing your hard-earned honey in the cloud... 🐝" });
     console.log(`[Worker] Creating project archive: ${archiveName}`);
     // Exclude node_modules, .next, and other volatile directories for speed and reliability
     const excludeFlags = "--exclude='node_modules' --exclude='.next' --exclude='.openhands_state' --exclude='.uv-cache'";
@@ -509,6 +511,25 @@ async function backupProject() {
       console.warn(`[Worker] Backup upload failed: ${res.status} ${errorText}`);
     } else {
       console.log(`[Worker] Backup successfully uploaded to Supabase Storage.`);
+      
+      // Update last_synced_at in projects table
+      try {
+        const updateUrl = `${SUPABASE_URL}/rest/v1/projects?id=eq.${PROJECT_ID}`;
+        await fetch(updateUrl, {
+          method: "PATCH",
+          headers: {
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+            "apikey": SUPABASE_KEY,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+          },
+          body: JSON.stringify({ last_synced_at: new Date().toISOString() }),
+          signal: AbortSignal.timeout(10000)
+        });
+        console.log(`[Worker] Updated last_synced_at for project ${PROJECT_ID}`);
+      } catch (e) {
+        console.warn(`[Worker] Failed to update last_synced_at:`, e.message);
+      }
     }
   } catch (e) {
     console.error("[Worker] Backup failed:", e.message);
@@ -517,4 +538,15 @@ async function backupProject() {
   }
 }
 
-main();
+if (MODE === "backup") {
+  console.log(`[${new Date().toISOString()}] [Worker] --- STARTING MANUAL BACKUP ---`);
+  backupProject().then(() => {
+    console.log("[Worker] Manual backup finished. Exiting.");
+    process.exit(0);
+  }).catch(err => {
+    console.error("[Worker] Manual backup failed:", err);
+    process.exit(1);
+  });
+} else {
+  main();
+}

@@ -23,9 +23,10 @@ export async function POST(req: NextRequest) {
   console.log("[API] --- Generation Request Start ---");
   try {
     const body = await req.json().catch(() => ({}));
-    const { prompt, model, sandboxId: existingSandboxId, projectId, initialHistory, skipAgent } = body;
+    const { prompt, model, sandboxId: existingSandboxId, projectId, initialHistory, skipAgent, mode, force } = body;
 
-    if (!prompt) return NextResponse.json({ error: "No prompt provided" }, { status: 400 });
+    const isBackup = mode === "backup";
+    if (!prompt && !isBackup) return NextResponse.json({ error: "No prompt provided" }, { status: 400 });
 
     const { Daytona } = await import("@daytonaio/sdk");
     const supabase = createClient();
@@ -49,12 +50,13 @@ export async function POST(req: NextRequest) {
 
     // Credit Check
     const { data: profile } = await supabaseAdmin.from("profiles").select("credits").eq("id", userId).single();
-    if (!profile || (profile.credits || 0) < 150) {
-      return NextResponse.json({ error: "Insufficient credits (Min 150 needed)" }, { status: 403 });
+    if (!isBackup && !force) {
+      if (!profile || (profile.credits || 0) < 150) {
+        return NextResponse.json({ error: "Insufficient credits (Min 150 needed)" }, { status: 403 });
+      }
+      // Deduct Activation Fee
+      await supabaseAdmin.rpc("decrement_credits", { user_id: userId, amount: 100 });
     }
-
-    // Deduct Activation Fee
-    await supabaseAdmin.rpc("decrement_credits", { user_id: userId, amount: 100 });
 
     // Project Record
     let projectRecord;
@@ -177,7 +179,8 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from("projects").update({ preview_url: previewUrl }).eq("id", projectRecord.id);
 
     const envFileContent = Object.entries({
-      GENERATION_PROMPT: prompt,
+      GENERATION_PROMPT: prompt || "Manual Backup",
+      MODE: mode || "full",
       GENERATION_MODEL: model || "google/gemini-3.1-flash-lite-preview",
       PROJECT_ID: projectRecord.id,
       WEBHOOK_TOKEN: webhookToken,

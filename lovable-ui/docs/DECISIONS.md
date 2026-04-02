@@ -569,3 +569,22 @@ Implemented a dual-layer persistence and synchronization strategy:
 -   **Performance**: Optimistic UI updates keep the interface feeling snappy while the backend handles the reliable storage.
 -   **Reliability**: Deduplication prevents the timeline from being cluttered with redundant entries during development loops or network retries.
 
+
+## Add 'Last Synced to Supabase' Indicator (2026-04-02)
+
+### Problem
+Users had no way of knowing when their project files were last backed up to Supabase Storage, which is critical for understanding if an automated backup has occurred before closing a session or resuming on another device.
+
+### Solution
+Implemented a `last_synced_at` field in the `projects` table and a corresponding UI indicator.
+
+### Changes
+1.  **Database Migration**: Added a `last_synced_at` column to the `projects` table.
+2.  **Worker Synchronization**: Updated the `backupProject` function in `worker.mjs` to update the `last_synced_at` timestamp in Supabase after every successful project file backup.
+3.  **Dashboard UI**: Added a "Cloud Sync" indicator with relative time (e.g., "Synced 5m ago") to project cards.
+4.  **Generation UI**: Added a "Last synced" timestamp to the sidebar header on the generation page, giving real-time feedback on backup status.
+
+### Rationale
+-   **User Confidence**: Providing visibility into the backup process reduces anxiety about data loss.
+-   **Transparency**: Clearly communicates the "state of truth" between the local Daytona sandbox and the remote Supabase storage.
+-   **Minimal Overhead**: Utilizing the existing worker-to-Supabase communication path for an additional metadata update is highly efficient.
