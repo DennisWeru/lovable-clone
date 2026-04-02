@@ -281,3 +281,20 @@ The "Live Preview" iframe was failing with a 400 "authentication state verificat
 ### Plan
 1. Update `lovable-ui/app/api/generate-daytona/route.ts` to set `public: true` in `daytona.create()`.
 2. Verified that `restart-server/route.ts` already has robust fallback logic for preview URLs.
+
+## 2026-04-02: Enhanced Project Resumption Logic
+
+### Decision
+Implemented a "Smart Resume" flow that ensures the Daytona sandbox and development server are ready before continuing a session. Added a `skipAgent` mode to the generation pipeline to allow environment restoration without re-running the AI agent.
+
+### Rationale
+Users opening existing projects from the dashboard often encountered broken previews because the sandbox was stopped or the dev server was not running. By explicitly checking the sandbox status, restarting it if needed, and restoring project files from Supabase backups if the sandbox was deleted, we provide a seamless "re-entry" experience. 
+
+### Plan
+1. **Frontend Integration**: Modified `GenerateContent` to call `generate-daytona` with `skipAgent: true` when a project ID is present but no active session is detected.
+2. **API Enhancement**: Updated `/api/generate-daytona` to pass a `SKIP_AGENT` flag to the worker environment.
+3. **Worker Optimization**: Refactored `worker.mjs` to skip the Agent SDK execution while still handling file restoration (if necessary) and starting the Vite dev server.
+4. **Supabase Backup Recovery**: Ensured that `worker.mjs` always attempts to pull the latest `${PROJECT_ID}.tar.gz` from Supabase storage if the sandbox directory is empty during a resume.
+
+### Result
+Opening an existing project now reliably "wakes up" the environment, ensuring the live preview is functional before the user is prompted for further changes.

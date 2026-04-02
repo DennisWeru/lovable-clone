@@ -15,6 +15,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 const TEMPLATE_REPO_URL = process.env.TEMPLATE_REPO_URL || "https://gitlab.com/weruDennis/reactvitetemplate.git";
 const TEMPLATE_REPO_BRANCH = process.env.TEMPLATE_REPO_BRANCH || "main";
+const SKIP_AGENT = process.env.SKIP_AGENT === "true";
 
 const FRIENDLY_MESSAGES = [
   "Analyzing your request and planning the architecture... 🐝",
@@ -216,8 +217,12 @@ async function main() {
       }
     }
 
-    await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
-    await runAgentSDK(venvBin);
+    if (SKIP_AGENT) {
+      await sendUpdate("progress", { message: "🔄 Resuming session: Skipping AI generation, preparing environment..." });
+    } else {
+      await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
+      await runAgentSDK(venvBin);
+    }
 
     // 1. Recursive Project Validation & Flattening
     const foundDir = findPackageJson(projectDir);

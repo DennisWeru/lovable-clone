@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   console.log("[API] --- Generation Request Start ---");
   try {
     const body = await req.json().catch(() => ({}));
-    const { prompt, model, sandboxId: existingSandboxId, projectId, initialHistory } = body;
+    const { prompt, model, sandboxId: existingSandboxId, projectId, initialHistory, skipAgent } = body;
 
     if (!prompt) return NextResponse.json({ error: "No prompt provided" }, { status: 400 });
 
@@ -42,6 +42,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "API Keys missing" }, { status: 500 });
     }
 
+    const isResume = !!projectId;
+    const isSkipAgent = !!skipAgent;
+
     const webhookToken = crypto.randomUUID();
 
     // Credit Check
@@ -55,13 +58,9 @@ export async function POST(req: NextRequest) {
 
     // Project Record
     let projectRecord;
-    let isResume = false;
     if (projectId) {
       const { data } = await supabaseAdmin.from("projects").update({ webhook_token: webhookToken }).eq("id", projectId).select().single();
       projectRecord = data;
-      if (projectRecord?.sandbox_id) {
-        isResume = true;
-      }
     } else {
       const { data } = await supabaseAdmin.from("projects").insert({
         name: prompt.split(" ").slice(0, 5).join(" "),
@@ -167,6 +166,7 @@ export async function POST(req: NextRequest) {
       PREVIEW_URL: previewUrl,
       OPENHANDS_SID: `sid-${projectRecord.id.slice(0, 8)}`,
       IS_RESUME: isResume ? "true" : "false",
+      SKIP_AGENT: isSkipAgent ? "true" : "false",
       SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
       SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       GAI_STRATEGY: "inet", // Force IPv4 to bypass DNS hangs

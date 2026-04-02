@@ -208,10 +208,17 @@ function GenerateContent({ projectId }: { projectId: string }) {
         }
       }
 
-      // Only auto-generate if we have a prompt and NO preview URL yet
-      if (prompt && !initialPreviewUrl) {
+      // If we have a projectId and prompt, we should ensure the sandbox is ready
+      // even if we have an initialPreviewUrl, because the server might be down.
+      if (projectId && prompt) {
         setIsGenerating(true);
-        generateWebsite(prompt);
+        if (initialPreviewUrl) {
+          console.log("[Init] Existing project detected. Ensuring environment is ready...");
+          setLogs("Resuming session: Checking development environment...\n");
+          generateWebsite(prompt, true); // skipAgent = true
+        } else {
+          generateWebsite(prompt);
+        }
       }
     };
 
@@ -219,7 +226,7 @@ function GenerateContent({ projectId }: { projectId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, router, initialSandboxId, initialPreviewUrl, projectId]);
   
-  const generateWebsite = async (currentPrompt: string) => {
+  const generateWebsite = async (currentPrompt: string, skipAgent = false) => {
     console.log("[Generate] Starting generation for prompt:", currentPrompt);
     try {
       setLastPrompt(currentPrompt);
@@ -248,6 +255,7 @@ function GenerateContent({ projectId }: { projectId: string }) {
           model, 
           sandboxId: sandboxId,
           projectId: projectId,
+          skipAgent
         }),
       });
 
