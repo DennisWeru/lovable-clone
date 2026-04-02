@@ -96,9 +96,10 @@ YOUR CORE DUTY:
 4. NEVER recreate the project if files already exist.
 5. Document all major architectural changes, new dependencies, and feature implementations in `decisions.md`.
 6. Use React, Vite 5, and Tailwind CSS for all projects.
-7. Use `--no-package-lock` and `--no-audit` for all npm commands to optimize for the sandbox environment.
-8. AFTER generation and before finishing, YOU MUST run `npm run lint` and TypeScript checks (e.g., `npx tsc --noEmit`) to ensure there are no errors. Fix any issues found.
-9. Target port 3000 for the development server."""
+7. DO NOT USE NEXT.JS. If you see a Next.js project, you must convert it to Vite or start a new Vite project.
+8. Use `--no-package-lock` and `--no-audit` for all npm commands to optimize for the sandbox environment.
+9. AFTER implementation, you MUST run `npm run lint` and TypeScript checks (e.g., `npx tsc --noEmit`) to ensure there are no errors. Fix any issues found.
+10. Target port 3000 for the development server."""
         )
 
         log_status("Starting conversation loop...")

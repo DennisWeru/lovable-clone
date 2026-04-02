@@ -215,20 +215,12 @@ async function main() {
     
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
-      if (pkg.scripts?.dev) {
-        if (pkg.scripts.dev.includes("next")) {
-          devCommand = "npx next dev --port 3000 --hostname 0.0.0.0";
-        } else if (pkg.scripts.dev.includes("vite")) {
-          devCommand = "npx vite --host 0.0.0.0 --port 3000";
-        } else {
-          devCommand = "npm run dev -- --port 3000 --host 0.0.0.0 --hostname 0.0.0.0";
-        }
-      }
+      devCommand = "npx vite --host 0.0.0.0 --port 3000";
     } catch (e) {
        console.warn("[Worker] Could not parse package.json for dev scripts, using fallback.");
     }
 
-    try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite|next\" 2>/dev/null || true"); } catch (e) {}
+    try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f vite 2>/dev/null || true"); } catch (e) {}
     await runCommand(`nohup ${devCommand} > /home/daytona/dev-server.log 2>&1 &`, { cwd: projectDir });
 
     // 3. Backup to Supabase
@@ -256,7 +248,7 @@ async function runAgentSDK(pythonPath) {
 
   if (projectFiles.length === 0 || !hasPackageJson) {
       console.log("[Worker] Project directory is empty or missing package.json. Prepending initialization instruction.");
-      finalPrompt = `IMPORTANT: The project directory is currently empty or missing package.json. You MUST first initialize a Vite project using 'npm create vite@5 . -- --template react-ts --no-interactive' before implementing the user's request. Also ensure you use '--no-package-lock' and '--no-audit' for any subsequent installs to optimize speed. AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.\n\nUser Request: ${PROMPT}`;
+      finalPrompt = `IMPORTANT: The project directory is currently empty or missing package.json. You MUST first initialize a Vite project using 'npm create vite@5 . -- --template react-ts --no-interactive' before implementing the user's request. **DO NOT USE NEXT.JS under any circumstances.** Also ensure you use '--no-package-lock' and '--no-audit' for any subsequent installs to optimize speed. AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.\n\nUser Request: ${PROMPT}`;
   } else {
       console.log("[Worker] Project directory is not empty. Providing context to agent.");
       const { fileList, decisions } = getProjectContext(projectDir);
@@ -269,7 +261,7 @@ ${decisions || "No previous decisions found."}
 
 CURRENT GOAL: ${PROMPT}
 
-Please continue from where you left off. Do not recreate existing files unless necessary. AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.`;
+Please continue from where you left off. Do not recreate existing files unless necessary. **STRICT REQUIREMENT: Use ONLY Vite and React. DO NOT USE NEXT.JS.** AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.`;
   }
 
   if (IS_RESUME) {
