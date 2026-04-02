@@ -65,21 +65,23 @@ export async function POST(req: NextRequest) {
     const projectDir = "/home/daytona/website-project"; // Same as in generation worker
     const setupScript = [
       `cd ${projectDir}`,
+      `ls -la`,
       `git init`,
       `git config user.name "Lovabee Agent"`,
       `git config user.email "agent@lovabee.vercel.app"`,
+      `git status`,
       `git add .`,
-      `git commit -m "Exported from Lovabee"`,
+      `git commit -m "Exported from Lovabee" --allow-empty`,
       `git branch -M main`,
-      `git remote add origin ${authenticatedUrl} || git remote set-url origin ${authenticatedUrl}`,
+      `git remote add origin "${authenticatedUrl}" || git remote set-url origin "${authenticatedUrl}"`,
       `git push -u origin main -f`,
     ].join(" && ");
 
     console.log(`[Export API] Running git push in sandbox: ${sandboxId}`);
     
-    // We use executeCommand here because we want sync feedback if possible.
+    // We redirect stderr to stdout (2>&1) to capture the actual error from git
     const exportResult = await sandbox.process.executeCommand(
-      `/bin/bash -c "${setupScript} && echo 'EXPORT_SUCCESS' || echo 'EXPORT_FAILED'"`
+      `/bin/bash -c "(${setupScript}) 2>&1 && echo 'EXPORT_SUCCESS' || echo 'EXPORT_FAILED'"`
     );
 
     const fullOutput = exportResult.result || "";
