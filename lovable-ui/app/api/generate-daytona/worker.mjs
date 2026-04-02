@@ -265,11 +265,16 @@ async function runAgentSDK(pythonPath) {
       
       const lines = output.split("\n");
       for (const line of lines) {
-        if (!line.trim().startsWith("{")) continue;
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("{")) continue;
+        
         try {
-          const payload = JSON.parse(line);
-          // Handle various types from the agent_runner
-          if (payload.type === "progress") {
+          const payload = JSON.parse(trimmed);
+          // Update timestamp whenever we get ANY valid structured data from the agent
+          lastUpdateAt = Date.now();
+
+          if (payload.type === "progress" || payload.type === "status") {
+             // Map 'status' to 'progress' for the UI
              sendUpdate("progress", { message: payload.message });
           } else if (payload.type === "tool_use") {
              sendUpdate("tool_use", { 
@@ -285,8 +290,14 @@ async function runAgentSDK(pythonPath) {
              });
           } else if (payload.type === "error") {
              console.warn("[Runner Error]", payload.message);
+             sendUpdate("error", { message: payload.message });
+          } else if (payload.type === "complete") {
+             // The runner might report completion via JSON too
+             console.log("[Worker] Agent reported completion.");
           }
-        } catch (e) { }
+        } catch (e) {
+          // Likely a partial JSON or interleaved logs, ignore and continue
+        }
       }
     });
 

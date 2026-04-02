@@ -80,8 +80,9 @@ export async function POST(req: NextRequest) {
     console.log(`[Export API] Running git push in sandbox: ${sandboxId}`);
     
     // We redirect stderr to stdout (2>&1) to capture the actual error from git
+    // We use single quotes for the outer wrapper to avoid clashing with inner double quotes
     const exportResult = await sandbox.process.executeCommand(
-      `/bin/bash -c "(${setupScript}) 2>&1 && echo 'EXPORT_SUCCESS' || echo 'EXPORT_FAILED'"`
+      `/bin/bash -c '( ${setupScript.replace(/'/g, "'\\''")} ) 2>&1 && echo "EXPORT_SUCCESS" || echo "EXPORT_FAILED"'`
     );
 
     const fullOutput = exportResult.result || "";

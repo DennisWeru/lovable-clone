@@ -11,7 +11,7 @@ from openhands.tools.terminal import TerminalTool
 import inspect
 from typing import Any, Dict
 
-def log_status(message: str, type: str = "status"):
+def log_status(message: str, type: str = "progress"):
     print(json.dumps({"type": type, "message": message}), flush=True)
 
 import uuid
@@ -104,14 +104,20 @@ YOUR CORE DUTY:
         # 1.16.0 Subscription Pattern
         def on_event(event: Any):
             try:
-                # Capture Thought/Reasoning
+                # 1. Capture Thought/Reasoning from the event itself (modern SDK)
                 if hasattr(event, "reasoning_content") and event.reasoning_content:
                     log_status(event.reasoning_content, "progress")
                 
-                # Capture Action (Tool Use)
+                # 2. Capture Action (Tool Use)
                 if hasattr(event, "action") and event.action:
                     action = event.action
                     name = type(action).__name__
+                    
+                    # Extract 'thought' if present in the action itself
+                    thought = getattr(action, "thought", "")
+                    if thought:
+                        log_status(thought, "progress")
+
                     # Map to a consistent JSON format for the worker
                     print(json.dumps({
                         "type": "tool_use",
@@ -120,7 +126,7 @@ YOUR CORE DUTY:
                         "input": getattr(action, "args", getattr(action, "__dict__", {}))
                     }), flush=True)
 
-                # Capture Observation (Tool Result)
+                # 3. Capture Observation (Tool Result)
                 if hasattr(event, "observation") and event.observation:
                     observation = event.observation
                     name = type(observation).__name__
@@ -142,9 +148,18 @@ YOUR CORE DUTY:
 
         log_status("Agent is thinking and executing tasks...", "progress")
         
+        # Heartbeat to keep worker's friendly rotation disabled during long thinking
+        async def heartbeat():
+            while True:
+                await asyncio.sleep(15)
+                log_status("Agent active: processing next steps...", "progress")
+        
+        hb_handle = asyncio.create_task(heartbeat())
+        
         # We wrap the run call. Currently the SDK run() is blocking.
         conversation.send_message(prompt)
         conversation.run()
+        hb_handle.cancel()
 
         log_status("Agent execution completed successfully!", "complete")
         

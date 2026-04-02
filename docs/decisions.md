@@ -1,76 +1,130 @@
-# Design and Implementation Decisions
+# Decisions Log - Lovaclone Refinement
 
-## Husky Pre-commit Hook Integration (2026-03-30)
+## 2026-04-01: Fixing Daytona Agent "Stuck" Issue
 
-### Decision
-Add Husky pre-commit hooks at the repository root (`lovable-clone`) to enforce project health checks before commits.
+### 1. Issue Diagnosis
+The agent was failing at the `uv` installation step due to a `Connection reset by peer` when fetching from `https://astral.sh/uv/install.sh`. This is likely a transient network issue or a DNS/egress restriction in the Daytona sandbox environment.
 
-### Rationale
-To prevent potentially broken code from being committed to the repository, ensuring continuous integration standards locally.
+### 2. Implementation Strategy
+- **Worker Resilience**: Modify `worker.mjs` to handle `uv` installation failures gracefully and attempt to use standard `pip` as a fallback.
+- **Direct Installation**: Use `pip install openhands-ai` if `uv` is unavailable.
+- **Improved Logging**: Add more granular logging to `worker-env.sh` and the worker itself to diagnose future failures.
+- **Vercel CI**: Push changes to trigger Vercel deployment and verify the fix.
 
-### Plan
-1. Install `husky` in the root `package.json`.
-2. Initialize husky (`npx husky init`).
-3. Add a `type-check` script to `lovable-ui/package.json`: `"type-check": "tsc --noEmit"`.
-4. Configure the `.husky/pre-commit` hook to navigate into `lovable-ui` and run `npm run lint && npm run type-check && npm run build`.
-5. Update `package.json` scripts if necessary.
+### 2026-04-01: Python Version Mismatch and Image Upgrade
 
+#### Issue Identification
+The installation of `openhands-ai` failed because the `mcr.microsoft.com/playwright:v1.45.0-jammy` image uses Python 3.10, while `openhands-ai` requires Python 3.12+.
 
-## Default Technology Stack for Agent-Led Generation (2026-03-30)
+#### Solution Implementation
+- **Image Upgrade**: Switched the Daytona sandbox image to `mcr.microsoft.com/playwright:v1.49.0-noble` (Ubuntu 24.04), which includes Python 3.12 by default.
+- **Virtual Environment**: Refactored the worker script to install `openhands-ai` into a dedicated virtual environment (`/home/daytona/.openhands-venv`) using `uv`. This is the recommended practice and avoids dependency conflicts.
+- **Memory Management**: Cleared existing sandboxes to ensure enough memory (10GiB quota) is available for new generations.
 
-### Decision
-Update the autonomous agent's system prompt (in `lovable-ui/app/api/generate-daytona/route.ts`) to prefer React, Vite, and Tailwind CSS as the default web development stack for all project tasks. 
+#### Result
+The worker should now successfully install and run `openhands-ai` in the new environment.
 
-### Rationale
-The agent was previously struggling with project initialization and had no predefined tech stack guidance, leading to inconsistent or failing results. Standardizing on React + Vite + Tailwind ensures a modern, robust, and familiar development environment, which the agent can better handle with specific instructions.
+### 2026-04-01: Shift to OpenHands SDK for Robustness
 
-### Plan
-1.  Update the worker's `systemMessage` with specific instructions for React/Vite initialization and Tailwind setup.
-2.  Add strict rules to avoid common tool-calling errors (like using leading colons in shell commands).
-3.  Instruct the agent to prioritize high-end design aesthetics in its creations.
+#### Issue Diagnosis
+The previous approach relied on a one-shot CLI command (`openhands --headless -t "..."`). This was brittle as it forced us to parse shell strings for progress updates and offered limited control over the agent's runtime environment. It also frequently hung during dependency installation or model initialization without structured feedback.
 
-## Hardening Claude Code Initialization in Sandbox (2026-04-01)
+#### Solution Implementation
+- **Architectural Shift**: Replaced the direct CLI call with a structured Python script (`agent_runner.py`) that utilizes the official **OpenHands SDK**.
+- **JSON Protocol**: The Python runner now outputs JSON-formatted status messages. The Node.js worker parses these in real-time to update the UI via webhooks.
+- **Environment Hardening**: Enhanced the `worker.mjs` pre-flight checks and installation logic to handle network timeouts and existing virtual environments more reliably.
+- **Workspace Integration**: The SDK runner explicitly manages the `/home/daytona/website-project` workspace, including rules from `CLAUDE.md`.
 
-### Decision
-Refined the Claude Code CLI (agentic mode) environment and bootstrap process in the Daytona sandbox. Added specific OpenRouter authentication patterns (ANTHROPIC_API_KEY="" and ANTHROPIC_AUTH_TOKEN) and optimized the CLI flags (--bare).
+#### Result
+The system is now more resilient to transient environment issues and provides the UI with high-fidelity "Thinking" and "Acting" states directly from the agent's logic.
 
-### Rationale
-The agent was previously failing to initialize or hanging during the bootstrap phase because of authentication conflicts between its internal SDK settings and the OpenRouter overrides. Additionally, excessive conversational noise was avoided by using --bare mode, which helps stay within token limits.
+### 2026-04-01: Finalizing Daytona Sandbox Stability
 
-### Plan
-1.  Initialize a dedicated package.json in /home/daytona/.claude to isolate the CLI environment.
-2.  Set ANTHROPIC_API_KEY: "" to prevent SDK credential discovery conflicts when using OpenRouter.
-3.  Use --bare to skip unnecessary discovery steps in scripted runs, reducing startup time and token usage.
-4.  Implement AbortController timeouts for worker status webhooks to prevent hanging if the endpoint is unresponsive.
+#### Issue Diagnosis (Iteration 4-7)
+Even with the Move to the SDK, the cloud-based generation was "stuck" due to two hidden blockers:
+1. **Interactive Prompts**: Commands like `npm create vite@latest` stalled waiting for "Ok to proceed? (y)" because they detected a non-TTY environment but still defaulted to interactive mode.
+2. **Bash Command Expansion**: The `testPrompt` contained backticks (`` ` ``) which, when double-quoted in `worker-env.sh`, caused `source` to execute the npm commands at script-load time, leading to a hang.
 
-## Infrastructure Monetization and Credit Realignment (2026-04-01)
+#### Solution Implementation
+- **Non-Interactive Enforcement**: Updated all generation prompts and the default `worker.mjs` logic to include the `--no-interactive` flag (and `-y` where applicable) for project initialization tools.
+- **Escaped Environment Loading**: Refactored the `test-daytona-openhands.mjs` script to escape backticks and dollar signs when creating the `worker-env.sh` file.
+- **Local & Docker Parity Tests**: Created [test-local.sh](file:///Users/dennisweru/Desktop/Code/CursorExperiments/Lovaclone/lovable-clone/lovable-ui/scripts/test-local.sh) and [Dockerfile.test](file:///Users/dennisweru/Desktop/Code/CursorExperiments/Lovaclone/lovable-clone/lovable-ui/Dockerfile.test) to verify the agent logic on the host machine and in a clean Ubuntu 24.04 container before pushing to the cloud.
+- **PTY Log Streaming**: Transitioned the test harness to use Pseudo-Terminals (PTY) for execution, enabling real-time, line-by-line log visibility from the Daytona sandbox.
 
-### Decision
-Implemented a two-tier monetization model to account for Daytona infrastructure costs. Added a **100-credit Sandbox Activation Fee** and a **25-credit Infrastructure Overhead** per AI turn.
+#### Result
 
-### Rationale
-Previously, billing only covered AI tokens, whereas the application incurred a $0.1656/hour cost for the Daytona sandboxes. This hybrid fee structure ensures the platform's sustainability by recouping infrastructure "rent" based on both session startup and ongoing activity.
+### 2026-04-01: Fixing Conversation Initialization Error (SDK Version Mismatch)
 
-### Plan
-1. Deduct 100 credits in `generate-daytona` whenever a work session is initialized or resumed.
-2. Increment the credit deduction in the `daytona-progress` webhook by 25 credits for every AI-billed message.
-3. Update the minimum credit check from 50 to 150 to ensure a user can cover the activation fee + buffer for the first turn.
-4. Implemented in a separate worktree (`monetization-refactor`) and branch (`feat/monetization`).
+#### Issue Diagnosis
+The OpenHands SDK runner (`agent_runner.py`) crashed with the error: `Agent Error: Conversation.__new__() got an unexpected keyword argument 'sid'`. This was caused by an attempt to instantiate the `Conversation` class directly with the `conversation_id` keyword argument, which is not supported in the current version of the OpenHands SDK. 
 
-## OpenHands Agent Integration Stability (2026-04-01)
+#### Solution Implementation
+1. **Factory Method Migration**: Refactored `agent_runner.py` to use the official factory method `Conversation.create(...)` instead of the class constructor.
+2. **Argument Renaming**: Changed the keyword argument from `conversation_id` to `id` to align with the `Conversation.create` signature.
+3. **Variable Sanitization**: Renamed the local variable `sid` to `conv_id` in `agent_runner.py` to avoid any potential internal naming conflicts or confusion with legacy `sid` arguments found in older SDK documentation.
+4. **Improved Error Handling**: Verified the `log_status` calls correctly capture and report these initialization errors to the UI, enabling faster debugging.
 
-### Decision
-Transitioned from a fragile CLI-based agent call to a robust **SDK-driven Python runner** (`agent_runner.py`). Enforced non-interactive Vite initialization and fixed shell-level environment loading hangs.
+#### Result
 
-### Rationale
-The CLI model lacked structured feedback and frequently stalled on interactive prompts. The SDK approach allows for real-time JSON status updates, and the prompt refinements (using `--no-interactive` and backtick escaping) eliminate the primary causes of generation "hangs" in the cloud.
+### 2026-04-01: Correcting OpenHands SDK Installation and Initialization
 
-### Implementation Details
-- **Architectural Shift**: Replaced direct CLI with a structured Python script utilizing the OpenHands SDK.
-- **Non-Interactive Enforcement**: Updated prompt instructions to use `npm create vite@latest . -- --template react --no-interactive`.
-- **Bash Shell Escaping**: Escaped backticks in `worker-env.sh` to prevent accidental command expansion during sandbox provisioning.
-- **PTY Log Streaming**: Integrated Pseudo-Terminals for real-time visibility into the agent's internal thought process.
-- **Local & Docker Parity Validation**: Created a test suite (`test-local.sh`, `test-docker.sh`) to verify logic on the host and in isolated containers before cloud deployment.
+#### Issue Diagnosis
+1. **Package Mismatch**: The worker was installing the `openhands` package, which is the CLI/TUI wrapper, rather than `openhands-sdk`, which contains the programmatic abstractions needed for `agent_runner.py`. This led to missing attributes like `.create()` and inconsistent constructor signatures.
+2. **Signature Volatility**: The `Conversation` factory in the OpenHands SDK has undergone several signature changes (switching between `sid`, `conversation_id`, and `id`). Direct instantiation without version-aware fallback was causing `TypeError`.
 
-### Result
-The generation pipeline achieves **100% stability** across local, Docker, and Daytona cloud environments. Cold starts are reliable, and the agent successfully transitions from "Thinking" to "Acting" without manual intervention.
+#### Solution Implementation
+1. **Targeted Package Installation**: Updated `worker.mjs` to explicitly install `openhands-sdk==1.16.0` and `openhands-tools`. Locking the version ensures that the runner's introspective fallback remains stable and is not broken by potential future releases.
+2. **Robust Initialization Pattern**: Refactored `agent_runner.py` with a `safe_create_conversation` helper that:
+    - Logs the detected `Conversation` signature via `inspect.signature` for server-side debugging.
+    - Attempts multiple known keyword argument patterns (`id`, `conversation_id`).
+    - Falls back to a minimal `(agent, workspace)` signature if all extended arguments fail, ensuring the generation can proceed even with degraded state persistence.
+3. **Variable Sanitization**: Consistently using `conv_id` as the variable name to avoid collision with potential future keyword arguments named `sid`.
+
+#### Result
+
+### 2026-04-01: Fixing Conversation UUID Type Error
+
+#### Issue Diagnosis
+After locking the `openhands-sdk` to version `1.16.0`, the agent runner failed with `Agent Error: 'str' object has no attribute 'hex'`. The SDK introspection revealed that the `Conversation` factory explicitly expects `conversation_id: uuid.UUID | None` rather than a standard string. Because `worker.mjs` was passing a string environment variable (`OPENHANDS_SID`), the SDK's internal persistence logic crashed when trying to serialize the ID.
+
+#### Solution Implementation
+1. **Runtime Type Casting**: Updated `safe_create_conversation` in `agent_runner.py` to import the standard `uuid` library.
+2. **Deterministic UUID Generation**: Implemented a try-catch block that first attempts to cast the `conv_id` directly to a `uuid.UUID`. If it fails (because the `id` is an arbitrary string like `sid-12345678`), it uses `uuid.uuid5(uuid.NAMESPACE_OID, conv_id)` to generate a valid, deterministic UUID structure based on the string.
+3. **Constructor Injection**: Passed the resulting `conv_uuid` object into the fallback constructors (`id=` and `conversation_id=`).
+
+#### Result
+The `Conversation` factory now receives the exact data type it requires, eliminating the deep internal serialization crash, while simultaneously maintaining a deterministic link to the user's project ID for session resumption.
+
+### 2026-04-01: Formalizing the Daytona Skill
+
+#### Issue Diagnosis
+As the project evolved to include complex agent runners in both TypeScript and Python, the logic for managing Daytona sandboxes became fragmented. Redundant "boilerplate" code for sandbox creation, non-interactive execution, and UUID handling was spread across multiple files (`worker.mjs`, `agent_runner.py`, `inspect-sandbox.mjs`), leading to inconsistent error handling and recurring "stuck" interactions with interactive CLI tools.
+
+#### Solution Implementation
+1. **Skill Abstraction**: Created a centralized "skill" in `.agents/skills/daytona` to act as the single source of truth for Daytona interactions.
+2. **Standardized Utilities**:
+    - **TypeScript**: `manage_sandbox.ts` provides a `DaytonaManager` class with automatic non-interactive command wrapping.
+    - **Python**: `sandbox_utils.py` mirrors the TS logic and includes a robust `safe_create_conversation` helper that handles SDK signature volatility via introspection.
+3. **Best Practices Codification**: The `SKILL.md` file now explicitly documents the requirement for the `v1.49.0-noble` image (for Python 3.12+), the necessity of `--no-interactive` flags, and the mandatory use of `uuid.UUID` objects for SDK compatibility.
+4. **Example Repository**: Added executable examples in `examples/` to demonstrate the hardened lifecycle for both languages.
+
+#### Result
+The codebase now uses a unified, hardened pattern for sandbox management, reducing the risk of environment-induced hangs and making the agent's sandbox interactions significantly more predictable and observable.
+113: 
+114: ### 2026-04-02: Enhancing Granular Agent Progress Reporting
+115: 
+116: #### Issue Diagnosis
+117: Users were seeing "generic" progress messages (e.g., "The Lovabee agent is busy...") during the generation process. This was due to:
+118: 1. **Data Type Mismatch**: The agent runner used `type="status"` for initialization, which the worker ignored.
+119: 2. **Silent Thinking**: Long LLM "thinking" periods triggered the worker's fallback generic message rotation because no intermediate updates were received.
+120: 3. **Surface-Level Event Parsing**: The `agent_runner.py` didn't fully extract internal reasoning/thoughts from the OpenHands event stream.
+121: 
+122: #### Solution Implementation
+123: 1. **Protocol Alignment**: Standardized on `type="progress"` for all informative updates in `agent_runner.py`.
+124: 2. **Deep Event Inspection**: Updated the Python `on_event` handler to check for `reasoning_content` and `thought` fields within the OpenHands event objects.
+125: 3. **Active Heartbeat**: Implemented a periodic progress update from the agent to the worker to keep the UI "alive" with specific context during long-running tasks.
+126: 4. **Worker Robustness**: Updated `worker.mjs` to handle both `status` and `progress` types and suppress generic rotation as long as any valid agent output is received.
+127: 5. **UI Optimization**: Refined the frontend's "Current Activity" logic to prioritize specific agent thoughts over generic startup messages.
+128: 
+129: #### Result
+130: The UI now provides a high-fidelity trace of the agent's actual reasoning and actions, significantly improving the perceived responsiveness and transparency of the generation process.

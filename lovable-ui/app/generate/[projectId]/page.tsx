@@ -725,16 +725,20 @@ function GenerateContent({ projectId }: { projectId: string }) {
                       const toolIndex = messages.lastIndexOf(lastTool!);
                       const progressIndex = messages.lastIndexOf(lastProgress!);
                       
-                      // If we have a very recent progress message (thought), prioritize it for "layman" friendliness
-                      if (progressIndex >= 0 && (progressIndex >= toolIndex || (toolIndex - progressIndex) < 2)) {
+                      const genericProgress = ["Agent active with tools...", "Agent active: processing next steps...", "Agent is thinking and executing tasks...", "Developing your website..."];
+                      
+                      // If we have a very recent progress message (thought), check if it's non-generic
+                      if (progressIndex >= 0 && (progressIndex >= toolIndex || (toolIndex - progressIndex) < 3)) {
                          const msg = lastProgress!.content || lastProgress!.message || "";
-                         if (msg && msg !== "Agent active with tools...") return msg;
+                         if (msg && !genericProgress.includes(msg)) return msg;
                       }
 
                       if (toolIndex >= 0) {
                         return getFriendlyToolMessage(lastTool!.name || "", lastTool!.input);
                       } else if (progressIndex >= 0) {
-                         return lastProgress!.content === "Agent active with tools..." ? "Thinking about next steps..." : (lastProgress!.content || lastProgress!.message);
+                         const msg = lastProgress!.content || lastProgress!.message || "";
+                         if (msg === "Agent active with tools..." || msg === "Agent active: processing next steps...") return "Thinking about next steps...";
+                         return msg;
                       }
                       return "Initializing background agent...";
                     })()}
