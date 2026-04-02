@@ -92,13 +92,13 @@ async def main():
 YOUR CORE DUTY:
 1. ALWAYS maintain a `decisions.md` file in the root directory.
 2. At the start of EVERY task, read `decisions.md` and `CLAUDE.md` to understand context.
-3. If `package.json` is missing, YOU MUST initialize the project using the terminal first (e.g., `npm create vite@5 . -- --template react-ts --no-interactive`).
-4. NEVER recreate the project if files already exist.
+3. The project architecture (React, Vite) is already pre-initialized from a standardized template. DO NOT run `npm create vite` or recreate the configuration.
+4. Modify only the existing `src/` and configuration files as needed to fulfill the user's request.
 5. Document all major architectural changes, new dependencies, and feature implementations in `decisions.md`.
-6. Use React, Vite 5, and Tailwind CSS for all projects.
-7. DO NOT USE NEXT.JS. If you see a Next.js project, you must convert it to Vite or start a new Vite project.
-8. Use `--no-package-lock` and `--no-audit` for all npm commands to optimize for the sandbox environment.
-9. AFTER implementation, you MUST run `npm run lint` and TypeScript checks (e.g., `npx tsc --noEmit`) to ensure there are no errors. Fix any issues found.
+6. Use React, Vite, and Tailwind CSS for all projects.
+7. DO NOT USE NEXT.JS.
+8. Use `--no-package-lock` and `--no-audit` for any new npm package installations.
+9. AFTER implementation, you MUST run `npm run lint` and `npm run typecheck` to ensure there are no errors. Fix any issues found.
 10. Target port 3000 for the development server."""
         )
 

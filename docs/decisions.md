@@ -174,3 +174,22 @@ The generation failure "no package.json found" was occurring because the OpenHan
 
 #### Result
 The agent is now forced to establish a standard project structure before implementing features, eliminating the "no package.json" error. Resumed sessions are significantly more context-aware, reducing hallucinations and improving continuity across multiple generation turns.
+
+### 2026-04-02: Transition to Template-Driven Sandbox Initialization
+
+#### Issue Diagnosis
+The agent was frequently "starting from scratch" or failing to establish a consistent project structure when relying on `npm create vite`. Additionally, follow-up messages sometimes triggered a "Force Initialization" logic that wiped existing progress because the worker's state detection was overly reliant on the presence of `package.json` in the root.
+
+#### Solution Implementation
+1. **Host-Side Initialization (worker.mjs)**:
+    - Shifted project setup from the AI agent to the Node.js worker.
+    - If a sandbox is fresh, the worker now clones a standardized GitLab template (`https://gitlab.com/weruDennis/reactvitetemplate.git`) on the `main` branch.
+    - The worker removes the `.git` metadata to isolate the workspace and performs an immediate `npm install` to prepare the environment before the agent starts.
+2. **Standardized Quality Assurance (agent_runner.py)**:
+    - Updated the agent's system prompt to reflect that the project structure is pre-initialized.
+    - Mandated the use of the template's internal scripts: `npm run lint` (JS/TS/CSS) and `npm run typecheck` (TypeScript) for all verification steps.
+3. **Robust Follow-up Logic**:
+    - Simplified the prompt injection for resumed sessions. The agent is now purely an "Editor" of the existing template, eliminating the "start-from-scratch" risk.
+
+#### Result
+The generation pipeline is now deterministic. The AI agent no longer handles project scaffolding, resulting in 100% consistent architecture across all generated projects and significant improvements in reliability for iterative follow-up requests.

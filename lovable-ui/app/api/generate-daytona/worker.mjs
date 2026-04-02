@@ -13,6 +13,8 @@ const PREVIEW_URL = process.env.PREVIEW_URL || "";
 const IS_RESUME = process.env.IS_RESUME === "true";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
+const TEMPLATE_REPO_URL = process.env.TEMPLATE_REPO_URL || "https://gitlab.com/weruDennis/reactvitetemplate.git";
+const TEMPLATE_REPO_BRANCH = process.env.TEMPLATE_REPO_BRANCH || "main";
 
 const FRIENDLY_MESSAGES = [
   "Analyzing your request and planning the architecture... 🐝",
@@ -188,7 +190,27 @@ async function main() {
     // Ensure decisions.md exists
     const decisionsPath = path.join(projectDir, "decisions.md");
     if (!fs.existsSync(decisionsPath)) {
-      fs.writeFileSync(decisionsPath, "# Project Decisions\n\n- Initial project creation\n");
+      fs.writeFileSync(decisionsPath, "# Project Decisions\n\n- Initial template clone\n");
+    }
+
+    // 0.8 Initialize Project Template from Clone if Empty
+    const projectFiles = fs.readdirSync(projectDir).filter(f => f !== ".DS_Store" && f !== "CLAUDE.md" && f !== ".openhands_state" && f !== "decisions.md");
+    const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
+
+    if (projectFiles.length === 0 || !hasPackageJson) {
+      await sendUpdate("progress", { message: "📦 Pulling standardized React Vite template..." });
+      try {
+        await runCommand(`git clone -b ${TEMPLATE_REPO_BRANCH} ${TEMPLATE_REPO_URL} .`, { cwd: projectDir });
+        await runCommand("rm -rf .git", { cwd: projectDir });
+        await sendUpdate("progress", { message: "📦 Installing project dependencies (this may take a minute)..." });
+        await runCommand("npm install --no-package-lock --no-audit", { cwd: projectDir });
+      } catch (e) {
+        console.error("[Worker] Template cloning failed:", e);
+        // Fallback to minimal setup if clone fails to avoid total failure
+        if (!fs.existsSync(path.join(projectDir, "package.json"))) {
+           await runCommand("npm create vite@5 . -- --template react-ts --no-interactive", { cwd: projectDir });
+        }
+      }
     }
 
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
@@ -247,8 +269,8 @@ async function runAgentSDK(pythonPath) {
   const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
 
   if (projectFiles.length === 0 || !hasPackageJson) {
-      console.log("[Worker] Project directory is empty or missing package.json. Prepending initialization instruction.");
-      finalPrompt = `IMPORTANT: The project directory is currently empty or missing package.json. You MUST first initialize a Vite project using 'npm create vite@5 . -- --template react-ts --no-interactive' before implementing the user's request. **DO NOT USE NEXT.JS under any circumstances.** Also ensure you use '--no-package-lock' and '--no-audit' for any subsequent installs to optimize speed. AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.\n\nUser Request: ${PROMPT}`;
+      console.log("[Worker] Project directory is empty (unexpected after clone). Using template ready prompt.");
+      finalPrompt = `The project has been successfully initialized from a standardized React Vite template. **DO NOT run initialization commands or re-create the project from scratch.** Proceed to implement the user's request by modifying the existing files. **Crucially, you MUST use 'npm run lint' and 'npm run typecheck' to verify your work before finishing.**\n\nUser Request: ${PROMPT}`;
   } else {
       console.log("[Worker] Project directory is not empty. Providing context to agent.");
       const { fileList, decisions } = getProjectContext(projectDir);
@@ -261,7 +283,7 @@ ${decisions || "No previous decisions found."}
 
 CURRENT GOAL: ${PROMPT}
 
-Please continue from where you left off. Do not recreate existing files unless necessary. **STRICT REQUIREMENT: Use ONLY Vite and React. DO NOT USE NEXT.JS.** AFTER implementation, you MUST run 'npm run lint' and TypeScript checks (e.g. 'npx tsc --noEmit') to ensure there are no errors. Fix any issues you find before finishing.`;
+Please continue from where you left off. Do not recreate existing files unless necessary. **STRICT REQUIREMENT: Use ONLY Vite and React. DO NOT USE NEXT.JS. Use 'npm run lint' and 'npm run typecheck' for validation.**`;
   }
 
   if (IS_RESUME) {

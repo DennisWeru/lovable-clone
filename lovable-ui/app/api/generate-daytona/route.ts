@@ -170,7 +170,9 @@ export async function POST(req: NextRequest) {
       SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
       SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       GAI_STRATEGY: "inet", // Force IPv4 to bypass DNS hangs
-      PYTHONUNBUFFERED: "1"
+      PYTHONUNBUFFERED: "1",
+      TEMPLATE_REPO_URL: "https://gitlab.com/weruDennis/reactvitetemplate.git",
+      TEMPLATE_REPO_BRANCH: "main"
     }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
 
     await sandbox.fs.uploadFile(Buffer.from(envFileContent), "/home/daytona/worker-env.sh");
