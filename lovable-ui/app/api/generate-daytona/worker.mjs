@@ -217,7 +217,7 @@ async function main() {
     await runCommand(`nohup ${devCommand} > /home/daytona/dev-server.log 2>&1 &`, { cwd: projectDir });
 
     // 3. Backup to Supabase
-    await sendUpdate("progress", { message: "Bakcing up... 📦 Securing backup to cloud storage..." });
+    await sendUpdate("progress", { message: "Backing up... 📦 Securing backup to cloud storage..." });
     await backupProject();
 
     await sendUpdate("complete", { 
@@ -324,8 +324,9 @@ async function backupProject() {
   
   try {
     console.log(`[Worker] Creating project archive: ${archiveName}`);
-    // Exclude node_modules for speed and space
-    execSync(`tar -czf ${archivePath} -C ${projectDir} --exclude='node_modules' .`);
+    // Exclude node_modules, .next, and other volatile directories for speed and reliability
+    const excludeFlags = "--exclude='node_modules' --exclude='.next' --exclude='.openhands_state' --exclude='.uv-cache'";
+    execSync(`tar -czf ${archivePath} ${excludeFlags} --ignore-failed-read -C ${projectDir} .`);
     
     const stats = fs.statSync(archivePath);
     console.log(`[Worker] Uploading archive (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
