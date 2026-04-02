@@ -72,6 +72,13 @@ async def main():
         log_status("No prompt provided", "error")
         sys.exit(1)
 
+    print(f"\n--- OpenHands Agent Startup ---", flush=True)
+    print(f"Project Dir: {project_dir}", flush=True)
+    print(f"Model: {model}", flush=True)
+    print(f"Conversation ID: {conv_id}", flush=True)
+    print(f"Base URL: {base_url}", flush=True)
+    print(f"Prompt Preview: {prompt[:100]}...", flush=True)
+    
     log_status(f"Initializing OpenHands SDK with model: {model}...")
 
     try:

@@ -56,9 +56,13 @@ let currentFriendlyIndex = 0;
 const ROBUST_PATH = "export PATH=$HOME/.local/bin:$HOME/.cargo/bin:/home/daytona/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH && export GAI_STRATEGY=inet";
 
 async function sendUpdate(type, data) {
-  if (!WEBHOOK_URL || !WEBHOOK_TOKEN) return;
+  const timestamp = new Date().toISOString();
+  if (!WEBHOOK_URL || !WEBHOOK_TOKEN) {
+    console.log(`[${timestamp}] [Worker] Skipping update (no webhook): ${type}`);
+    return;
+  }
   lastUpdateAt = Date.now();
-  console.log(`[Worker] Sending ${type} update to ${WEBHOOK_URL}`);
+  console.log(`[${timestamp}] [Worker] Sending ${type} update to ${WEBHOOK_URL}`);
   try {
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -77,14 +81,29 @@ async function sendUpdate(type, data) {
 }
 
 function runCommand(command, options = {}) {
+  const timestamp = new Date().toISOString();
   const cmdWithEnv = `${ROBUST_PATH} && export UV_CACHE_DIR=/home/daytona/.uv-cache && ${command}`;
-  console.log(`[Worker] Executing: ${command}`);
-  // Debug: check disk usage
-  try { execSync(`${ROBUST_PATH} && df -h / | tail -1`, { stdio: "inherit", shell: true }); } catch (e) {}
+  console.log(`\n[${timestamp}] [Exec] Running: ${command}`);
+  
+  // Debug: check disk usage and machine state
+  try { 
+    const df = execSync(`${ROBUST_PATH} && df -h / | tail -1`, { encoding: "utf8", shell: true }).trim();
+    const load = execSync(`uptime | awk -F'load average:' '{ print $2 }'`, { encoding: "utf8", shell: true }).trim();
+    console.log(`[${timestamp}] [System] Disk: ${df} | Load: ${load}`);
+  } catch (e) {}
   
   return new Promise((resolve, reject) => {
     const cp = spawn(cmdWithEnv, [], { shell: true, stdio: "inherit", ...options });
-    cp.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${command} failed with code ${code}`)));
+    cp.on("close", (code) => {
+      const endTimestamp = new Date().toISOString();
+      if (code === 0) {
+        console.log(`[${endTimestamp}] [Exec] Success: ${command}`);
+        resolve();
+      } else {
+        console.log(`[${endTimestamp}] [Exec] Failed (code ${code}): ${command}`);
+        reject(new Error(`${command} failed with code ${code}`));
+      }
+    });
   });
 }
 
@@ -149,8 +168,15 @@ const projectDir = "/home/daytona/website-project";
 if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
 
 async function main() {
+  const startTs = new Date().toISOString();
+  console.log(`\n[${startTs}] [Worker] --- LOVABEE WORKER START ---`);
+  console.log(`[${startTs}] [Worker] Project ID: ${PROJECT_ID}`);
+  console.log(`[${startTs}] [Worker] Model: ${MODEL}`);
+  console.log(`[${startTs}] [Worker] Node Version: ${process.version}`);
+  console.log(`[${startTs}] [Worker] Resume Mode: ${IS_RESUME}`);
+  
   try {
-    console.log("[Worker] Starting main loop. Checking network...");
+    console.log(`[${new Date().toISOString()}] [Worker] Pre-flight network check...`);
     // 0. Pre-flight check
     try {
        const controller = new AbortController();

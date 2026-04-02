@@ -532,3 +532,22 @@ Implemented a comprehensive "Brand Voice" overhaul for all progress and status r
 ### Changes
 -   Modified `lovable-ui/app/api/generate-daytona/worker.mjs` (FRIENDLY_MESSAGES and sendUpdate calls).
 -   Modified `lovable-ui/app/generate/[projectId]/page.tsx` (getFriendlyToolMessage and progress render logic).
+
+## Technical Transparency for Console Logs (2026-04-02)
+
+### Problem
+Technical users felt "stuck" during long-running background tasks (like `npm install` or environment setup) because the UI sidebar only showed non-technical bee puns. While the brand voice is important for general users, technical users need to know exactly what commands are running and the current state of the sandbox (disk, load, etc.) to debug issues.
+
+### Solution
+Overhauled the internal logging architecture to provide "dual-layer" progress reporting:
+1.  **Sidebar (Non-Technical)**: Preserved the delightful, bee-themed progress updates for the main UI sidebar.
+2.  **Console (Technical)**: Enhanced the `worker.log` output with significant technical detail:
+    - **Command Lifecycle**: Every shell command now logs a `[Exec] Running` and `[Exec] Success/Failed` message with an ISO timestamp.
+    - **Machine Status**: Every command execution is preceded by a `[System]` log showing current disk usage and CPU load average.
+    - **Startup Manifest**: The worker now prints a detailed startup manifest including Project ID, Model, Node version, and Resume status.
+    - **Agent Runner Verbosity**: Updated the Python `agent_runner.py` to output raw configuration metadata (paths, models, prompt previews) directly to the console.
+
+### Rationale
+-   **No-Compromise UX**: By separating technical logs (Console) from friendly progress (Sidebar), we satisfy the "pro" user's need for transparency without cluttering the interface for the target audience.
+-   **Debugging Efficiency**: Timestamps and system metrics in the console provide immediate insights into where a process might be hanging or failing due to resource constraints.
+-   **Developer Trust**: Clear "Success" and "Failed" indicators for every command eliminate guesswork about the cumulative state of the project initialization.
