@@ -200,8 +200,10 @@ async function main() {
     if (projectFiles.length === 0 || !hasPackageJson) {
       await sendUpdate("progress", { message: "📦 Pulling standardized React Vite template..." });
       try {
-        await runCommand(`git clone -b ${TEMPLATE_REPO_BRANCH} ${TEMPLATE_REPO_URL} .`, { cwd: projectDir });
-        await runCommand("rm -rf .git", { cwd: projectDir });
+        await runCommand(`git clone -b ${TEMPLATE_REPO_BRANCH} ${TEMPLATE_REPO_URL} /tmp/react-template`);
+        await runCommand(`rm -rf /tmp/react-template/.git`);
+        await runCommand(`bash -c 'shopt -s dotglob && cp -r /tmp/react-template/* ${projectDir}/'`);
+        await runCommand(`rm -rf /tmp/react-template`);
         await sendUpdate("progress", { message: "📦 Installing project dependencies (this may take a minute)..." });
         await runCommand("npm install --no-package-lock --no-audit", { cwd: projectDir });
       } catch (e) {
