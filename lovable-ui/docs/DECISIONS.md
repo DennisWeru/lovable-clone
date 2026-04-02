@@ -470,3 +470,19 @@ Implemented a multi-layered stabilization in `worker.mjs`:
 -   **Resilience**: The system now handles various agent initialization patterns without manual intervention.
 -   **Preview Accuracy**: Ensures the dev server always starts in the correct directory with proper network binding.
 -   **Resource Management**: Prevents background resource leakage in the Daytona sandbox.
+
+## Layman-Friendly Agent Progress Summaries (2026-04-02)
+
+### Problem
+The sidebar previously displayed technical logs (like "write_file index.tsx") or generic looping messages, which were not user-friendly and failed to communicate the agent's high-level intent.
+
+### Solution
+Implemented an intelligent progress reporting system:
+1.  **Event Stream Subscription**: Modified `agent_runner.py` to listen to the OpenHands `event_stream`. 
+2.  **Thought Extraction**: The runner now captures the `reasoning_content` (the agent's "Thought") from every `ActionEvent` and emits it as a `progress` update.
+3.  **Enhanced Friendly Mapping**: Updated `page.tsx` to map technical OpenHands actions (e.g., `CmdRunAction`, `FileEditAction`) to warm, descriptive summaries (e.g., "🎨 Applying modern styles with Tailwind CSS...").
+4.  **Display Prioritization**: The UI now prioritizes the agent's high-level "Thoughts" in the "Current Activity" snackbar, falling back to mapped tool descriptions only if no thought is available.
+
+### Rationale
+-   **Transparency**: Users can now understand *why* the agent is doing something, not just *what* tool it's using.
+-   **User Experience**: Layman-friendly language significantly reduces the perceived complexity of the generation process.

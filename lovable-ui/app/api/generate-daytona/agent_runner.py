@@ -101,14 +101,48 @@ YOUR CORE DUTY:
 
         conversation = safe_create_conversation(agent, project_dir, persistence_dir, conv_id)
 
-        # Inject the custom rules if they exist (we created CLAUDE.md in worker.mjs)
-        # The agent will naturally see CLAUDE.md in its workspace.
+        # 1.16.0 Subscription Pattern
+        def on_event(event: Any):
+            try:
+                # Capture Thought/Reasoning
+                if hasattr(event, "reasoning_content") and event.reasoning_content:
+                    log_status(event.reasoning_content, "progress")
+                
+                # Capture Action (Tool Use)
+                if hasattr(event, "action") and event.action:
+                    action = event.action
+                    name = type(action).__name__
+                    # Map to a consistent JSON format for the worker
+                    print(json.dumps({
+                        "type": "tool_use",
+                        "name": name,
+                        "id": getattr(event, "id", "unknown"),
+                        "input": getattr(action, "args", getattr(action, "__dict__", {}))
+                    }), flush=True)
+
+                # Capture Observation (Tool Result)
+                if hasattr(event, "observation") and event.observation:
+                    observation = event.observation
+                    name = type(observation).__name__
+                    # Map to a consistent JSON format for the worker
+                    print(json.dumps({
+                        "type": "tool_result",
+                        "name": name,
+                        "ref_id": getattr(event, "action_id", "unknown"),
+                        "result": getattr(observation, "content", str(observation))
+                    }), flush=True)
+
+            except Exception as e:
+                # Silent failure for events to avoid crashing the main loop
+                pass
+
+        # Subscribe the listener
+        from openhands.core.event.event_stream import EventStreamSubscriber
+        conversation.event_stream.subscribe(EventStreamSubscriber.MAIN, on_event)
 
         log_status("Agent is thinking and executing tasks...", "progress")
         
         # We wrap the run call. Currently the SDK run() is blocking.
-        # But we can try to use its event hooks if we want finer control.
-        # For now, let's just run. Its stdout should still pipe normally.
         conversation.send_message(prompt)
         conversation.run()
 

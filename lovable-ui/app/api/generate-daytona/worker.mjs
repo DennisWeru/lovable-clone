@@ -268,8 +268,24 @@ async function runAgentSDK(pythonPath) {
         if (!line.trim().startsWith("{")) continue;
         try {
           const payload = JSON.parse(line);
-          if (payload.type === "progress") sendUpdate("progress", { message: payload.message });
-          if (payload.type === "error") console.warn("[Runner Error]", payload.message);
+          // Handle various types from the agent_runner
+          if (payload.type === "progress") {
+             sendUpdate("progress", { message: payload.message });
+          } else if (payload.type === "tool_use") {
+             sendUpdate("tool_use", { 
+               name: payload.name, 
+               input: payload.input,
+               id: payload.id 
+             });
+          } else if (payload.type === "tool_result") {
+             sendUpdate("tool_result", { 
+               name: payload.name, 
+               result: payload.result,
+               ref_id: payload.ref_id 
+             });
+          } else if (payload.type === "error") {
+             console.warn("[Runner Error]", payload.message);
+          }
         } catch (e) { }
       }
     });

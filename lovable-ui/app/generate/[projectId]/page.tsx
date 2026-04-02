@@ -538,26 +538,37 @@ function GenerateContent({ projectId }: { projectId: string }) {
     switch (name) {
       case "list_files":
       case "list_dir":
+      case "ListFilesAction":
+      case "ExploreWorkspaceAction":
         return `Analyzing project structure...`;
       case "read_file":
-        return `Reviewing code in ${input.path || input.file_path}...`;
+      case "FileReadAction":
+        return `Reviewing code in ${input.path || input.file_path || "file"}...`;
       case "write_file":
+      case "FileEditAction":
+      case "FileWriteAction":
         const file = input.path || input.file_path || "";
         if (file.endsWith(".html")) return `Drafting webpage layout (${file})...`;
         if (file.endsWith(".css")) return `Adding styles and themes (${file})...`;
         if (file.endsWith(".js") || file.endsWith(".ts") || file.endsWith(".tsx")) return `Implementing logic in ${file}...`;
         return `Creating ${file}...`;
       case "run_command":
-        const cmd = input.command || "";
+      case "CmdRunAction":
+      case "ShellAction":
+        const cmd = input.command || input.cmd || "";
         if (cmd.includes("npm install")) return `Installing project dependencies...`;
         if (cmd.includes("npm run") || cmd.includes("node ")) return `Booting up your application...`;
         if (cmd.includes("mkdir")) return `Setting up project folders...`;
         return `Running system task: ${cmd.split(' ')[0]}...`;
       case "search_docs":
+      case "SearchDocsAction":
         return `Researching ${input.project || 'libraries'} documentation...`;
       case "take_screenshot":
+      case "ScreenshotAction":
         return `Taking a snapshot to verify the design...`;
       default:
+        // If it's a generic progress message, return it as is
+        if (name === "progress") return input.message;
         return `Performing agent task: ${name}...`;
     }
   };
@@ -714,10 +725,16 @@ function GenerateContent({ projectId }: { projectId: string }) {
                       const toolIndex = messages.lastIndexOf(lastTool!);
                       const progressIndex = messages.lastIndexOf(lastProgress!);
                       
-                      if (toolIndex >= 0 && toolIndex >= progressIndex) {
+                      // If we have a very recent progress message (thought), prioritize it for "layman" friendliness
+                      if (progressIndex >= 0 && (progressIndex >= toolIndex || (toolIndex - progressIndex) < 2)) {
+                         const msg = lastProgress!.content || lastProgress!.message || "";
+                         if (msg && msg !== "Agent active with tools...") return msg;
+                      }
+
+                      if (toolIndex >= 0) {
                         return getFriendlyToolMessage(lastTool!.name || "", lastTool!.input);
                       } else if (progressIndex >= 0) {
-                        return lastProgress!.content === "Agent active with tools..." ? "Thinking about next steps..." : (lastProgress!.content || lastProgress!.message);
+                         return lastProgress!.content === "Agent active with tools..." ? "Thinking about next steps..." : (lastProgress!.content || lastProgress!.message);
                       }
                       return "Initializing background agent...";
                     })()}
