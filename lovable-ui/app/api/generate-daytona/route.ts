@@ -149,7 +149,12 @@ export async function POST(req: NextRequest) {
     try {
       const preview = await sandbox.getPreviewLink(3000);
       previewUrl = preview.url;
-    } catch (e) {}
+    } catch (e) {
+      console.warn("[API] Failed to get official preview link, using fallback:", previewUrl);
+    }
+
+    // Update the project record with the initial preview URL
+    await supabaseAdmin.from("projects").update({ preview_url: previewUrl }).eq("id", projectRecord.id);
 
     const envFileContent = Object.entries({
       GENERATION_PROMPT: prompt,
@@ -187,7 +192,12 @@ export async function POST(req: NextRequest) {
       runAsync: true,
     });
 
-    return NextResponse.json({ success: true, projectId: projectRecord.id, sandboxId });
+    return NextResponse.json({ 
+      success: true, 
+      projectId: projectRecord.id, 
+      sandboxId,
+      previewUrl 
+    });
 
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

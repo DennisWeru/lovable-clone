@@ -263,6 +263,7 @@ function GenerateContent({ projectId }: { projectId: string }) {
       console.log("[Generate] API success data:", data);
       const currentProjectId = data.projectId;
       if (data.sandboxId) setSandboxId(data.sandboxId);
+      if (data.previewUrl) setPreviewUrl(data.previewUrl);
 
       // Start Realtime Subscription
       console.log("[Generate] Initializing Supabase Realtime for Project:", currentProjectId);
