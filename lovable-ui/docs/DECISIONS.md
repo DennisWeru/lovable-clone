@@ -493,3 +493,42 @@ To enhance security and privacy for users rapidly prototyping projects, we decid
 ### Changes Made
 - **Backend API**: Updated `/api/export-github` to default `isPrivate` to `true`.
 - **UI**: Added a visual indicator and note in the "Export to GitHub" modal confirming that repositories will be created as private.
+
+## Improving Agent Resume Resilience (2026-04-02)
+
+### Problem
+Users reported that opening an existing project from the dashboard (the "resume" flow) would often get "stuck" in a "generating" state. Logs showed that the worker was backgrounding the dev server and then immediately beginning a full project backup to Supabase. Because the `complete` status update was only sent *after* the backup finished, any delay or hang in the backup process (e.g., due to a large project or flaky network) made the UI feel non-responsive.
+
+### Solution
+Overhauled the resume synchronization logic in `worker.mjs`:
+1.  **Reordered Completion Updates**: On resume flows (`SKIP_AGENT=true`), the `complete` signal is now sent *immediately* after the dev server is backgrounded. This allows the UI to load the preview iframe within seconds.
+2.  **Background Backup**: The backup to Supabase still occurs but is performed *after* the completion signal, ensuring it doesn't block the user experience.
+3.  **Network Timeouts**: Added a 30-second `AbortSignal.timeout` to the Supabase upload `fetch` call to prevent indefinite hangs in the sandbox environment.
+4.  **Friendly Update Suppression**: Ensured `lastUpdateAt` is updated at the start of the backup to prevent the "friendly rotation" from sending unnecessary "Thought" messages during a technical backup task.
+5.  **Fault Tolerance**: Wrapped the backup process in a try/catch block to ensure that a failed background backup doesn't crash the worker or prevent it from exiting gracefully.
+
+### Rationale
+-   **Perceived Speed**: Users expect existing projects to load instantly. By decoupling the preview availability from the backup persistence, we achieve a much snappier experience.
+-   **Robustness**: Timeouts and error handling in the backup process protect the overall worker lifecycle from infrastructure issues.
+-   **State Consistency**: Sending `complete` earlier ensures the frontend has the correct `sandboxId` and `previewUrl` as soon as they are available.
+
+## Lovabee Brand Voice: Bee-themed Progress Puns (2026-04-02)
+
+### Problem
+The generation sidebar previously displayed generic, technical, or repetitive progress messages (e.g., "Developing your website...", "Thinking about next steps..."). This felt sterile and failed to reinforce the "Lovabee" brand identity.
+
+### Solution
+Implemented a comprehensive "Brand Voice" overhaul for all progress and status reporting:
+1.  **Backend Status Overhaul**: Updated `worker.mjs` to send delightful, bee-themed progress updates at every major lifecycle stage (e.g., "🐝 Hive setup...", "🏘️ Building a cozy honeycomb...").
+2.  **30+ Friendly Message Rotation**: Replaced the small set of friendly messages in the worker with a 30-variant rotation of bee puns to keep the user engaged during long-running tasks.
+3.  **Frontend Tool Mapping**: Updated `page.tsx` to map technical OpenHands actions to warm, brand-consistent summaries (e.g., "✨ Polishing the wax" for CSS edits).
+4.  **Dynamic Client-side Puns**: Added a client-side pun rotator in `page.tsx` that provides a fresh bee pun every 5 seconds if the agent is in a "Thinking" state, ensuring the UI always feels alive.
+
+### Rationale
+-   **Brand Consistency**: Reinforces the Lovabee identity through every touchpoint of the user journey.
+-   **User Retention**: Engaging, humorous content reduces the perceived wait time during website generation.
+-   **Accessibility**: Translates technical tool calls into understandable, high-level summaries for non-technical users.
+
+### Changes
+-   Modified `lovable-ui/app/api/generate-daytona/worker.mjs` (FRIENDLY_MESSAGES and sendUpdate calls).
+-   Modified `lovable-ui/app/generate/[projectId]/page.tsx` (getFriendlyToolMessage and progress render logic).

@@ -350,4 +350,21 @@ To enhance security and privacy for users rapidly prototyping projects, we decid
 
 ### Changes Made
 - **Backend API**: Updated `/api/export-github` to default `isPrivate` to `true`.
-- **UI**: Added a visual indicator and note in the "Export to GitHub" modal confirming that repositories will be created as private.
+
+## Supabase Backup Lifecycle and Conditions (2026-04-02)
+
+### Decision
+Documented the specific conditions and lifecycle triggers for project backups to Supabase Object Storage within the `generate-daytona` pipeline.
+
+### Rationale
+Clear documentation of the backup mechanism is essential for debugging persistence issues and understanding how the system handles sandbox transitions or session resumptions.
+
+### Findings
+The automated backup process in `worker.mjs` is governed by the following logic:
+- **Lifecycle Trigger**: The `backupProject()` function is called at the very end of the generation lifecycle, specifically **after** the Vite development server has been launched in the background and **before** the "complete" webhook is sent.
+- **Prerequisites**:
+    - **Authentication**: Requires valid `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (passed as `SUPABASE_KEY`).
+    - **Identity**: Requires a valid `PROJECT_ID` to name the archive.
+- **Success Dependency**: The backup only executes if the generation process reaches the end of the `main` script. If the agent fails (e.g., no `package.json` found), the worker exits early, and NO backup is performed.
+- **Robustness**: Uses `tar --ignore-failed-read` to prevent crashes caused by transient file changes during the archiving process, and implements an `upsert` (via the `x-upsert: true` header) to overwrite existing backups for the same project.
+- **Storage Path**: Archives are stored in the `project-backups` bucket as `${PROJECT_ID}.tar.gz`.

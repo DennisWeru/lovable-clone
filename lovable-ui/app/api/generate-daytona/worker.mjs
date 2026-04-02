@@ -18,11 +18,36 @@ const TEMPLATE_REPO_BRANCH = process.env.TEMPLATE_REPO_BRANCH || "main";
 const SKIP_AGENT = process.env.SKIP_AGENT === "true";
 
 const FRIENDLY_MESSAGES = [
-  "Analyzing your request and planning the architecture... 🐝",
-  "Initializing OpenHands autonomous agent... 🚀",
-  "Applying expert skills in React, Vite, and Tailwind... 🍯",
-  "Optimizing performance and ensuring smooth transitions... 🌻",
-  "The Lovabee agent is busy writing high-quality code..."
+  "Bee-zy building your dream site... 🐝",
+  "Making it sweet: Finalizing the UI... 🍯",
+  "Waggle dancing the data into place... 💃",
+  "Sticky situation: Dealing with complex code... 🧤",
+  "Architecting the hive: Planning the structure... 🏛️",
+  "Cleaning the hive: Refactoring code... 🍂",
+  "No bees-ness like show bees-ness: Launching soon! 🐝",
+  "Bee-lieve in the process: Processing your request... ✨",
+  "Every bee helps: Running parallel tasks... 🌼",
+  "Don't worry, bee happy: We're almost there! 😊",
+  "Pure gold: Generating your content... 🍯",
+  "Stinging the bugs: Debugging and testing... 🏹",
+  "Hive-warming: Preparing the preview... 🏡",
+  "Bee-hold! Your website is taking shape. 🤩",
+  "To bee or not to bee? Let's bee! 🐝",
+  "Honey, I'm home! (Nearing completion) 🍯",
+  "Un-bee-lievable things are coming... 🐝",
+  "Scouting the garden for better libraries... 🌳",
+  "Hive-fiving the server: Connection established! 🐝",
+  "Thick as honey: Compiling the assets... 🍯",
+  "Busy as a bee: Optimizing performance... 🐝",
+  "Pollen-ating the UI with vibrant colors... 🎨",
+  "Buzz-worthy results ahead! 🐝",
+  "Sweetening the user experience... 🍯",
+  "Bee-ing productive: Writing code... 🐝",
+  "Hive-mind activated: Syncing progress... 🐝",
+  "A spoonful of sugar: Adding finishing touches... 🍯",
+  "Wing-ing it: Generating creative layouts... 🐝",
+  "Bee-hind the scenes: Processing logic... 🐝",
+  "Liquid gold: Exporting your masterpiece... 🍯"
 ];
 
 let lastUpdateAt = Date.now();
@@ -148,7 +173,7 @@ async function main() {
     } catch (e) {}
 
     if (!isInstalled) {
-      await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
+      await sendUpdate("progress", { message: "🐝 Hive setup: Gathering the essentials (uv)..." });
       try { 
         const installUvCmd = `mkdir -p ~/.local/bin && if [ ! -f ~/.local/bin/uv ]; then ( curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu ); fi`;
         await runCommand(installUvCmd); 
@@ -156,10 +181,10 @@ async function main() {
         console.warn("[Worker] uv installation failed, attempting fallback...");
       }
 
-      await sendUpdate("progress", { message: "🤖 Creating isolated environment..." });
+      await sendUpdate("progress", { message: "🏘️ Building a cozy honeycomb for your project..." });
       try {
         await runCommand("uv venv /home/daytona/.openhands-venv");
-        await sendUpdate("progress", { message: "📦 Installing OpenHands SDK 1.16.0 (this may take a minute)..." });
+        await sendUpdate("progress", { message: "🧠 Training the worker bees (Installing OpenHands SDK)..." });
         await runCommand(". /home/daytona/.openhands-venv/bin/activate && uv pip install openhands-sdk==1.16.0 openhands-tools");
       } catch (e) {
         console.error("[Worker] OpenHands installation failed.", e);
@@ -171,7 +196,7 @@ async function main() {
     if (IS_RESUME) {
       const files = fs.readdirSync(projectDir);
       if (files.length === 0 || (files.length === 1 && files[0] === ".DS_Store")) {
-        await sendUpdate("progress", { message: "📦 Recovering project files from cloud storage..." });
+        await sendUpdate("progress", { message: "📦 Pollinating: Bringing back your project files from cloud storage..." });
         await restoreProject();
       }
     }
@@ -199,14 +224,14 @@ async function main() {
     const hasPackageJson = fs.existsSync(path.join(projectDir, "package.json"));
 
     if (projectFiles.length === 0 || !hasPackageJson) {
-      await sendUpdate("progress", { message: "📦 Pulling standardized React Vite template..." });
+      await sendUpdate("progress", { message: "🏗️ Using the royal blueprint (React Vite template)..." });
       try {
         await runCommand(`git clone -b ${TEMPLATE_REPO_BRANCH} ${TEMPLATE_REPO_URL} /tmp/react-template`);
         await runCommand(`rm -rf /tmp/react-template/.git`);
         await runCommand(`bash -c 'shopt -s dotglob && cp -r /tmp/react-template/* ${projectDir}/'`);
         await runCommand(`rm -rf /tmp/react-template`);
         await runCommand(`git init && git checkout -b main`, { cwd: projectDir });
-        await sendUpdate("progress", { message: "📦 Installing project dependencies (this may take a minute)..." });
+        await sendUpdate("progress", { message: "🍭 Collecting nectar for the hive (Installing dependencies)..." });
         await runCommand("npm install --no-package-lock --no-audit", { cwd: projectDir });
       } catch (e) {
         console.error("[Worker] Template cloning failed:", e);
@@ -218,9 +243,9 @@ async function main() {
     }
 
     if (SKIP_AGENT) {
-      await sendUpdate("progress", { message: "🔄 Resuming session: Skipping AI generation, preparing environment..." });
+      await sendUpdate("progress", { message: "🍯 Opening the honey jar: Resuming your session..." });
     } else {
-      await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
+      await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your garden..." });
       await runAgentSDK(venvBin);
     }
 
@@ -235,12 +260,12 @@ async function main() {
 
     if (path.resolve(foundDir) !== path.resolve(projectDir)) {
       console.log(`[Worker] Project detected in subdirectory: ${foundDir}. Flattening...`);
-      await sendUpdate("progress", { message: "🪄 Finalizing project structure..." });
+      await sendUpdate("progress", { message: "🪄 Polishing the hive structure..." });
       flattenProject(foundDir, projectDir);
     }
 
     // 2. Dynamic Dev Server Detection
-    await sendUpdate("progress", { message: "🔗 Launching preview..." });
+    await sendUpdate("progress", { message: "🚀 Flight check: Launching preview..." });
     let devCommand = "npx vite --host 0.0.0.0 --port 3000";
     
     try {
@@ -253,16 +278,36 @@ async function main() {
     try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f vite 2>/dev/null || true"); } catch (e) {}
     await runCommand(`nohup ${devCommand} > /home/daytona/dev-server.log 2>&1 &`, { cwd: projectDir });
 
-    // 3. Backup to Supabase
-    await sendUpdate("progress", { message: "Backing up... 📦 Securing backup to cloud storage..." });
-    await backupProject();
+    // 3. Status Finalization & Background Backup
+    if (SKIP_AGENT) {
+      console.log("[Worker] Skip agent active. Sending completion immediately while backing up...");
+      await sendUpdate("complete", { 
+        message: "Honey, I'm home! Resumed successfully! 🎉", 
+        metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands-sdk" } 
+      });
+      
+      // Perform backup in the background (before exit)
+      try {
+        await backupProject();
+      } catch (e) {
+        console.warn("[Worker] Background backup failed:", e.message);
+      }
+    } else {
+      await sendUpdate("progress", { message: "🍯 Filling the jars: Securing backup to cloud storage..." });
+      try {
+        await backupProject();
+      } catch (e) {
+        console.warn("[Worker] Final backup failed:", e.message);
+      }
 
-    await sendUpdate("complete", { 
-      message: "Build complete! 🎉", 
-      metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands-sdk" } 
-    });
+      await sendUpdate("complete", { 
+        message: "Sweet victory! Build complete! 🎉", 
+        metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands-sdk" } 
+      });
+    }
 
     clearInterval(friendlyInterval);
+    console.log("[Worker] Execution finished. Exiting.");
     process.exit(0);
   } catch (err) {
     console.error("[Worker] Fatal error:", err);
@@ -409,6 +454,7 @@ async function backupProject() {
   const archivePath = `/home/daytona/${archiveName}`;
   
   try {
+    lastUpdateAt = Date.now();
     console.log(`[Worker] Creating project archive: ${archiveName}`);
     // Exclude node_modules, .next, and other volatile directories for speed and reliability
     const excludeFlags = "--exclude='node_modules' --exclude='.next' --exclude='.openhands_state' --exclude='.uv-cache'";
@@ -428,7 +474,8 @@ async function backupProject() {
         "Content-Type": "application/x-gzip",
         "x-upsert": "true"
       },
-      body: fileBuffer
+      body: fileBuffer,
+      signal: AbortSignal.timeout(30000) // 30s timeout for upload
     });
 
     if (!res.ok) {

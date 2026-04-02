@@ -548,36 +548,36 @@ function GenerateContent({ projectId }: { projectId: string }) {
       case "list_dir":
       case "ListFilesAction":
       case "ExploreWorkspaceAction":
-        return `Analyzing project structure...`;
+        return `🔍 Scouting the hive structure...`;
       case "read_file":
       case "FileReadAction":
-        return `Reviewing code in ${input.path || input.file_path || "file"}...`;
+        return `👀 Inspecting the honeycomb cells (${input.path || input.file_path || "file"})...`;
       case "write_file":
       case "FileEditAction":
       case "FileWriteAction":
         const file = input.path || input.file_path || "";
-        if (file.endsWith(".html")) return `Drafting webpage layout (${file})...`;
-        if (file.endsWith(".css")) return `Adding styles and themes (${file})...`;
-        if (file.endsWith(".js") || file.endsWith(".ts") || file.endsWith(".tsx")) return `Implementing logic in ${file}...`;
-        return `Creating ${file}...`;
+        if (file.endsWith(".html")) return `🎨 Designing the garden layout (${file})...`;
+        if (file.endsWith(".css")) return `✨ Polishing the wax (Styling ${file})...`;
+        if (file.endsWith(".js") || file.endsWith(".ts") || file.endsWith(".tsx")) return `⚙️ Adding some buzz to the logic (${file})...`;
+        return `🏗️ Building a new cell: ${file}...`;
       case "run_command":
       case "CmdRunAction":
       case "ShellAction":
         const cmd = input.command || input.cmd || "";
-        if (cmd.includes("npm install")) return `Installing project dependencies...`;
-        if (cmd.includes("npm run") || cmd.includes("node ")) return `Booting up your application...`;
-        if (cmd.includes("mkdir")) return `Setting up project folders...`;
-        return `Running system task: ${cmd.split(' ')[0]}...`;
+        if (cmd.includes("npm install")) return `🍭 Collecting nectar for the hive (Installing packages)...`;
+        if (cmd.includes("npm run") || cmd.includes("node ")) return `🚀 Flight check: Booting up your application...`;
+        if (cmd.includes("mkdir")) return `🏘️ Expanding the hive: Creating folders...`;
+        return `🔧 Bee-zy with technical tasks: ${cmd.split(' ')[0]}...`;
       case "search_docs":
       case "SearchDocsAction":
-        return `Researching ${input.project || 'libraries'} documentation...`;
+        return `🌸 Looking for flowers (Researching ${input.project || 'libraries'})...`;
       case "take_screenshot":
       case "ScreenshotAction":
-        return `Taking a snapshot to verify the design...`;
+        return `📸 Taking a honey-shot (Verifying the design)...`;
       default:
         // If it's a generic progress message, return it as is
         if (name === "progress") return input.message;
-        return `Performing agent task: ${name}...`;
+        return `🐝 Working hard: ${name}...`;
     }
   };
 
@@ -733,8 +733,29 @@ function GenerateContent({ projectId }: { projectId: string }) {
                       const toolIndex = messages.lastIndexOf(lastTool!);
                       const progressIndex = messages.lastIndexOf(lastProgress!);
                       
-                      const genericProgress = ["Agent active with tools...", "Agent active: processing next steps...", "Agent is thinking and executing tasks...", "Developing your website..."];
+                      const genericProgress = [
+                        "Agent active with tools...", 
+                        "Agent active: processing next steps...", 
+                        "Agent is thinking and executing tasks...", 
+                        "Developing your website...",
+                        "Initializing background agent..."
+                      ];
                       
+                      const beePuns = [
+                        "Bee-zy building your dream site...",
+                        "Waggle dancing the data into place...",
+                        "The Queen is thinking...",
+                        "Polishing the wax on your UI...",
+                        "Collecting nectar for your code...",
+                        "To bee or not to bee? Let's bee!",
+                        "Un-bee-lievable things are coming...",
+                        "Buzz-worthy results ahead!",
+                        "Hive-mind activated: Syncing...",
+                        "Bee-lieve in the process...",
+                        "Just keep buzzing...",
+                        "Making it sweet..."
+                      ];
+
                       // If we have a very recent progress message (thought), check if it's non-generic
                       if (progressIndex >= 0 && (progressIndex >= toolIndex || (toolIndex - progressIndex) < 3)) {
                          const msg = lastProgress!.content || lastProgress!.message || "";
@@ -745,10 +766,13 @@ function GenerateContent({ projectId }: { projectId: string }) {
                         return getFriendlyToolMessage(lastTool!.name || "", lastTool!.input);
                       } else if (progressIndex >= 0) {
                          const msg = lastProgress!.content || lastProgress!.message || "";
-                         if (msg === "Agent active with tools..." || msg === "Agent active: processing next steps...") return "Thinking about next steps...";
+                         if (genericProgress.includes(msg)) {
+                           // Return a semi-random pun based on timestamp to keep it stable but fun
+                           return beePuns[Math.floor(Date.now() / 5000) % beePuns.length];
+                         }
                          return msg;
                       }
-                      return "Initializing background agent...";
+                      return "🎬 Hive assembly: Initializing worker bees...";
                     })()}
                   </p>
                 </div>
