@@ -298,3 +298,19 @@ Users opening existing projects from the dashboard often encountered broken prev
 
 ### Result
 Opening an existing project now reliably "wakes up" the environment, ensuring the live preview is functional before the user is prompted for further changes.
+
+## 2026-04-02: LangChain & LangGraph Architecture Evaluation
+
+### Decision
+Deferred the full transformation of the agent architecture to LangChain/LangGraph. Decided to maintain the **OpenHands SDK** as the primary coding engine while recommending a potential future **Hybrid Orchestration** model.
+
+### Rationale
+A deep research review concluded that OpenHands provides superior, pre-optimized tools for filesystem and terminal interactions (FileEditorTool, TerminalTool) that would require significant engineering effort to replicate in a custom LangGraph implementation. The current system is 100% stable, and the incremental benefit of LangGraph's state control doesn't yet outweigh the cost of re-implementing core AI software engineering capabilities.
+
+### Plan
+1. Document the research findings in `lovable-clone/docs/research/langchain_langgraph_evaluation.md`.
+2. Monitor agent performance for "logic-stuck" loops that could benefit from LangGraph's explicit cyclic control.
+3. Re-evaluate a "Hybrid Orchestrator" model (LangGraph managing high-level sessions + OpenHands for execution) if multi-agent requirements arise.
+
+### Result
+Maintained architectural stability and development velocity by avoiding a high-risk, "reinvent-the-wheel" refactor, while establishing a clear roadmap for future orchestration complexity.
