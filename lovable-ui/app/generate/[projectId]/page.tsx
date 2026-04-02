@@ -737,19 +737,6 @@ function GenerateContent({ projectId }: { projectId: string }) {
             </div>
             <div className="flex items-center gap-2">
               <button 
-                onClick={handleManualSync}
-                disabled={isGenerating || isSyncing}
-                className={`p-1.5 rounded-md border transition-colors flex items-center gap-1.5 ${isSyncing ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'}`}
-                title={isSyncing ? "Syncing to cloud..." : "Sync to Supabase"}
-              >
-                <svg className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                </svg>
-                {lastSyncedAt && !isSyncing && (
-                  <span className="text-[10px] font-medium hidden md:inline">{timeAgo(lastSyncedAt)}</span>
-                )}
-              </button>
-              <button 
                 onClick={() => setShowConsole(!showConsole)}
                 className={`p-1.5 rounded-md border transition-colors ${showConsole ? 'bg-amber-600/20 border-amber-500/50 text-amber-400' : 'border-gray-800 text-gray-400 hover:text-gray-300'}`}
                 title="Toggle Agent Console"
@@ -959,6 +946,20 @@ function GenerateContent({ projectId }: { projectId: string }) {
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                 <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Live Preview</span>
+                
+                <button 
+                  onClick={handleManualSync}
+                  disabled={isGenerating || isSyncing}
+                  className={`ml-2 p-1 rounded-md transition-colors flex items-center gap-1.5 ${isSyncing ? 'text-amber-400 animate-pulse' : 'text-gray-500 hover:text-gray-300'}`}
+                  title={isSyncing ? "Syncing to cloud..." : "Sync to Supabase"}
+                >
+                  <svg className={`w-3.5 h-3.5 ${isSyncing ? 'animate-bounce' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                  </svg>
+                  {lastSyncedAt && !isSyncing && (
+                    <span className="text-[10px] font-medium opacity-80">Synced {timeAgo(lastSyncedAt)}</span>
+                  )}
+                </button>
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={() => setShowExportModal(true)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-all flex items-center gap-1.5 text-xs border border-transparent hover:border-gray-700" title="Export code to GitHub repo">
