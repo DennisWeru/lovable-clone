@@ -10,6 +10,9 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const SANDBOX_ID = process.env.SANDBOX_ID || "";
 const PREVIEW_URL = process.env.PREVIEW_URL || "";
+const IS_RESUME = process.env.IS_RESUME === "true";
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 
 const FRIENDLY_MESSAGES = [
   "Analyzing your request and planning the architecture... 🐝",
@@ -95,6 +98,7 @@ async function main() {
     } catch (e) {}
 
     if (!isInstalled) {
+      // ... (existing installation logic)
       await sendUpdate("progress", { message: "🚀 Environment setup: Installing uv..." });
       try { 
         const installUvCmd = `mkdir -p ~/.local/bin && if [ ! -f ~/.local/bin/uv ]; then ( curl -4 -L --connect-timeout 15 --max-time 45 --retry 3 https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz -o uv.tar.gz && tar -xzf uv.tar.gz && chmod +x uv-x86_64-unknown-linux-gnu/uv && mv uv-x86_64-unknown-linux-gnu/uv ~/.local/bin/ && mv uv-x86_64-unknown-linux-gnu/uvx ~/.local/bin/ && rm -rf uv.tar.gz uv-x86_64-unknown-linux-gnu ); fi`;
@@ -114,6 +118,15 @@ async function main() {
       }
     }
 
+    // 0.5 Restore from backup if this is a resume and directory is empty
+    if (IS_RESUME) {
+      const files = fs.readdirSync(projectDir);
+      if (files.length === 0 || (files.length === 1 && files[0] === ".DS_Store")) {
+        await sendUpdate("progress", { message: "📦 Recovering project files from cloud storage..." });
+        await restoreProject();
+      }
+    }
+
     const rules = [
       "# Lovabee Agent Rules",
       "- Tech: React, Vite, Tailwind CSS",
@@ -121,9 +134,16 @@ async function main() {
       "- WORKSPACE: Always initialize the project in the CURRENT directory (`./`).",
       "- Tech Structure: Use Lucide React for icons.",
       "- Styling: Premium modern aesthetics (gradients, glassmorphism, Inter font).",
-      "- Port: 3000 (Required for preview)."
+      "- Port: 3000 (Required for preview).",
+      "- CORE MEMORY: ALWAYS maintain a `decisions.md` file. Document every major architectural choice, dependency added, and feature implemented. Read this file at the start of every session to maintain continuity."
     ].join("\n");
     fs.writeFileSync(path.join(projectDir, "CLAUDE.md"), rules);
+    
+    // Ensure decisions.md exists
+    const decisionsPath = path.join(projectDir, "decisions.md");
+    if (!fs.existsSync(decisionsPath)) {
+      fs.writeFileSync(decisionsPath, "# Project Decisions\n\n- Initial project creation\n");
+    }
 
     await sendUpdate("progress", { message: "🐝 Lovabee AI is planning your website..." });
     await runAgentSDK(venvBin);
@@ -140,6 +160,10 @@ async function main() {
     try { execSync("fuser -k 3000/tcp 2>/dev/null || pkill -f \"vite\" 2>/dev/null || true"); } catch (e) {}
     await runCommand("nohup npx vite --host 0.0.0.0 --port 3000 > /home/daytona/dev-server.log 2>&1 &", { cwd: projectDir });
 
+    // 4. Backup to Supabase
+    await sendUpdate("progress", { message: "Pakcing up... 📦 Securing backup to cloud storage..." });
+    await backupProject();
+
     await sendUpdate("complete", { 
       message: "Build complete! 🎉", 
       metadata: { sandboxId: SANDBOX_ID, previewUrl: PREVIEW_URL, engine: "openhands-sdk" } 
@@ -152,6 +176,11 @@ async function main() {
 }
 
 async function runAgentSDK(pythonPath) {
+  let finalPrompt = PROMPT;
+  if (IS_RESUME) {
+    finalPrompt = `Here is the existing code and the decisions we made previously from decisions.md. Do not recreate it; just continue from where you left off or start dev server and wait for further instructions.\n\nOriginal Task: ${PROMPT}`;
+  }
+
   const env = { 
     ...process.env, 
     LLM_API_KEY: OPENROUTER_API_KEY, 
@@ -159,6 +188,7 @@ async function runAgentSDK(pythonPath) {
     LLM_MODEL: MODEL,
     OPENHANDS_WORKSPACE_BASE: projectDir,
     OPENHANDS_SID: process.env.OPENHANDS_SID,
+    GENERATION_PROMPT: finalPrompt, // Override with resumed prompt
     PYTHONUNBUFFERED: "1"
   };
   
@@ -191,6 +221,81 @@ async function runAgentSDK(pythonPath) {
       else reject(new Error(`Agent SDK exit ${code}. Check runner logs.`));
     });
   });
+}
+
+async function restoreProject() {
+  if (!SUPABASE_URL || !SUPABASE_KEY || !PROJECT_ID) return;
+
+  const archiveName = `${PROJECT_ID}.tar.gz`;
+  const archivePath = `/home/daytona/${archiveName}`;
+  const downloadUrl = `${SUPABASE_URL}/storage/v1/object/project-backups/${archiveName}`;
+
+  try {
+    console.log(`[Worker] Attempting to restore project from: ${archiveName}`);
+    const res = await fetch(downloadUrl, {
+      headers: { "Authorization": `Bearer ${SUPABASE_KEY}` }
+    });
+
+    if (!res.ok) {
+      console.warn(`[Worker] No backup found for project ${PROJECT_ID} (Status: ${res.status}). Starting fresh.`);
+      return;
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    fs.writeFileSync(archivePath, Buffer.from(arrayBuffer));
+    
+    console.log(`[Worker] Extracting archive to ${projectDir}...`);
+    execSync(`tar -xzf ${archivePath} -C ${projectDir}`);
+    console.log(`[Worker] Project restoration complete.`);
+  } catch (e) {
+    console.error("[Worker] Restoration failed:", e.message);
+  } finally {
+    if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
+  }
+}
+
+async function backupProject() {
+  if (!SUPABASE_URL || !SUPABASE_KEY || !PROJECT_ID) {
+    console.warn("[Worker] Missing Supabase credentials, skipping backup.");
+    return;
+  }
+
+  const archiveName = `${PROJECT_ID}.tar.gz`;
+  const archivePath = `/home/daytona/${archiveName}`;
+  
+  try {
+    console.log(`[Worker] Creating project archive: ${archiveName}`);
+    // Exclude node_modules for speed and space
+    execSync(`tar -czf ${archivePath} -C ${projectDir} --exclude='node_modules' .`);
+    
+    const stats = fs.statSync(archivePath);
+    console.log(`[Worker] Uploading archive (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
+    
+    const fileBuffer = fs.readFileSync(archivePath);
+    const bucketUrl = `${SUPABASE_URL}/storage/v1/object/project-backups`;
+    const uploadUrl = `${bucketUrl}/${archiveName}`;
+    
+    const res = await fetch(uploadUrl, {
+      method: "POST", // Use POST for new or UPSERT via header
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/x-gzip",
+        "x-upsert": "true"
+      },
+      body: fileBuffer
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.warn(`[Worker] Backup upload failed: ${res.status} ${errorText}`);
+    } else {
+      console.log(`[Worker] Backup successfully uploaded to Supabase Storage.`);
+    }
+  } catch (e) {
+    console.error("[Worker] Backup failed:", e.message);
+  } finally {
+    if (fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
+  }
 }
 
 main();

@@ -445,3 +445,28 @@ Consulting the OpenHands SDK documentation (`https://docs.openhands.dev/sdk`) re
 1.  The session identifier is strictly named `conversation_id` (breaking legacy code using `sid`).
 2.  The identifier must be a valid Python `uuid.UUID` object, as strings crash the internal hex serializer used for persistence.
 By centrally documenting this SDK boilerplate and explicitly acknowledging these known pitfalls, future iterations of the `agent_runner.py` can be scaled securely without regressing on deterministic conversational persistence.
+
+## Persistent Daytona Sandboxes and Project Continuity (2026-04-02)
+
+### Problem
+When users reopened a project from the dashboard, the AI agent would frequently recreate the website from scratch. This was caused by two issues:
+1.  **Sandbox Volatility**: Daytona sandboxes were being deleted or reset after inactivity, leading to an empty workspace.
+2.  **Context Loss**: The AI was given the original "Create..." prompt in an empty folder, causing it to re-initialize the project.
+
+### Solution
+Implemented a multi-layered persistence and continuity strategy:
+1.  **Sandbox Persistence**: The `sandbox_id` is now stored in the `projects` table. The API attempts to "wake up" the existing sandbox using `sandbox.start()` if it's found, preserving the exact file state.
+2.  **Core Memory Pattern**: Standardized `decisions.md` as the agent's "Core Memory". The agent is strictly instructed to read/write to this file to maintain architectural continuity across sessions.
+3.  **Cloud Backups (Supabase)**: Implemented an automated backup system in the generation worker. At the end of every successful run, the project is zipped (excluding `node_modules`) and uploaded to Supabase Storage (`project-backups` bucket).
+4.  **Auto-Recovery**: If a project is resumed but the sandbox is fresh/empty, the worker automatically downloads and extracts the latest backup from Supabase before the AI agent starts.
+5.  **Resume Prompting**: Introduced an `IS_RESUME` flag that modifies the agent's initial instructions to: *"Here is the existing code and the decisions we made previously... Do not recreate it; just continue..."*
+
+### Changes
+-   **API Route**: `app/api/generate-daytona/route.ts` now handles sandbox retrieval, starting, and credential passing for backups.
+-   **Worker Script**: `app/api/generate-daytona/worker.mjs` now includes `backupProject()` and `restoreProject()` logic using raw `fetch` to the Supabase Storage API.
+-   **Agent Runner**: `app/api/generate-daytona/agent_runner.py` now includes a strict system prompt enforcing the `decisions.md` pattern.
+
+### Rationale
+-   **Reliability**: Even if the primary sandbox is purged by Daytona, the user's code is safe in Supabase and can be restored seamlessly.
+-   **Agent Intelligence**: By forcing the agent to read a "Decision Log," we simulate the behavior of a human developer joining an existing project, preventing redundant work.
+-   **Cost Efficiency**: Reusing sandboxes reduces the overhead of re-installing large dependencies like `openhands-sdk` on every project load.

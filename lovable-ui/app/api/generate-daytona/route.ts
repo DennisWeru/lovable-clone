@@ -55,9 +55,13 @@ export async function POST(req: NextRequest) {
 
     // Project Record
     let projectRecord;
+    let isResume = false;
     if (projectId) {
       const { data } = await supabaseAdmin.from("projects").update({ webhook_token: webhookToken }).eq("id", projectId).select().single();
       projectRecord = data;
+      if (projectRecord?.sandbox_id) {
+        isResume = true;
+      }
     } else {
       const { data } = await supabaseAdmin.from("projects").insert({
         name: prompt.split(" ").slice(0, 5).join(" "),
@@ -70,17 +74,41 @@ export async function POST(req: NextRequest) {
       projectRecord = data;
     }
 
+    if (!projectRecord) throw new Error("Failed to create or retrieve project record");
+
     // Daytona Provisioning
     const daytona = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
     let sandbox;
-    let sandboxId = existingSandboxId;
+    let sandboxId = projectRecord.sandbox_id || existingSandboxId;
 
     if (sandboxId) {
-      const result = await daytona.list();
-      sandbox = result.items.find((s: any) => s.id === sandboxId);
+      try {
+        console.log(`[API] Attempting to retrieve existing sandbox: ${sandboxId}`);
+        const result = await daytona.list();
+        sandbox = result.items.find((s: any) => s.id === sandboxId);
+        
+        if (sandbox) {
+          // If sandbox is found but not running, we might need to start it.
+          // Note: The SDK 'list' output might not have status, but we can try to 'start' it if it's inactive.
+          console.log(`[API] Found existing sandbox. Starting/Waking up...`);
+          // Ensuring the sandbox is started. Most Daytona SDKs handle 'start' on an existing object.
+          // If the SDK doesn't have .start(), we assume it's auto-managed by the system when we interact.
+          try {
+             if (typeof (sandbox as any).start === 'function') {
+               await (sandbox as any).start();
+             }
+          } catch (e) {
+             console.warn("[API] Sandbox start call failed (might already be running):", (e as Error).message);
+          }
+        }
+      } catch (e) {
+        console.warn(`[API] Failed to retrieve/start existing sandbox ${sandboxId}:`, (e as Error).message);
+        sandbox = null;
+      }
     }
 
     if (!sandbox) {
+      console.log("[API] Creating brand new sandbox...");
       sandbox = await daytona.create({
         public: false,
         image: "mcr.microsoft.com/playwright:v1.49.0-noble",
@@ -88,6 +116,9 @@ export async function POST(req: NextRequest) {
         autoStopInterval: 60
       });
       sandboxId = sandbox.id;
+      
+      // Update the project record with the new sandbox ID
+      await supabaseAdmin.from("projects").update({ sandbox_id: sandboxId }).eq("id", projectRecord.id);
     }
 
     // Worker Script (OpenHands) - Read from standalone file
@@ -130,6 +161,9 @@ export async function POST(req: NextRequest) {
       SANDBOX_ID: sandboxId,
       PREVIEW_URL: previewUrl,
       OPENHANDS_SID: `sid-${projectRecord.id.slice(0, 8)}`,
+      IS_RESUME: isResume ? "true" : "false",
+      SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       GAI_STRATEGY: "inet", // Force IPv4 to bypass DNS hangs
       PYTHONUNBUFFERED: "1"
     }).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`).join("\n");
