@@ -74,6 +74,27 @@ export async function POST(req: NextRequest) {
     }
 
     if (!projectRecord) throw new Error("Failed to create or retrieve project record");
+    
+    // Save User Message to History if it doesn't exist and not skipping agent
+    if (!isSkipAgent) {
+      const { data: existing } = await supabaseAdmin
+        .from("project_messages")
+        .select("id")
+        .eq("project_id", projectRecord.id)
+        .eq("type", "user")
+        .eq("content", prompt)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabaseAdmin.from("project_messages").insert({
+          project_id: projectRecord.id,
+          type: "user",
+          content: prompt,
+        });
+      }
+    }
+
+
 
     // Daytona Provisioning
     const daytona = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });

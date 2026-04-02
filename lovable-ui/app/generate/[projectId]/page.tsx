@@ -136,9 +136,27 @@ function GenerateContent({ projectId }: { projectId: string }) {
               });
 
               if (newMsgs.length > 0) {
-                setMessages((prev) => [...prev, ...newMsgs]);
+                setMessages((prev) => {
+                  let updated = [...prev];
+                  const toAdd: Message[] = [];
+
+                  newMsgs.forEach(newMsg => {
+                    if (newMsg.type === "user") {
+                      const idx = updated.findIndex(m => m.type === "user" && !m.id && m.content === newMsg.content);
+                      if (idx !== -1) {
+                         updated[idx] = { ...updated[idx], id: newMsg.id };
+                      } else {
+                         toAdd.push(newMsg);
+                      }
+                    } else {
+                      toAdd.push(newMsg);
+                    }
+                  });
+                  return [...updated, ...toAdd];
+                });
                 
                 // Track if we got 'complete' or 'error' in polling
+
                 newMsgs.forEach(m => {
                   if (m.type === "error" || m.type === "complete") {
                     if (m.type === "complete") {
@@ -320,8 +338,20 @@ function GenerateContent({ projectId }: { projectId: string }) {
               setIsGenerating(false);
               channel.unsubscribe();
             } else {
-              setMessages((prev) => [...prev, message]);
+              setMessages((prev) => {
+                // Optimistic UI merge: if we have a user message with the same content and no ID, replace it
+                if (message.type === "user") {
+                  const existingIndex = prev.findIndex(m => m.type === "user" && !m.id && m.content === message.content);
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = { ...updated[existingIndex], id: message.id };
+                    return updated;
+                  }
+                }
+                return [...prev, message];
+              });
             }
+
           }
         )
         .subscribe((status) => {
@@ -365,8 +395,13 @@ function GenerateContent({ projectId }: { projectId: string }) {
 
     const userMessage = inputValue;
     setInputValue("");
+    
+    // Add to local messages immediately for better UX
+    setMessages((prev) => [...prev, { type: "user", content: userMessage }]);
+    
     generateWebsite(userMessage);
   };
+
 
   const handleRestartServer = async () => {
     if (!sandboxId || isGenerating) return;

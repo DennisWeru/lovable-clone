@@ -551,3 +551,21 @@ Overhauled the internal logging architecture to provide "dual-layer" progress re
 -   **No-Compromise UX**: By separating technical logs (Console) from friendly progress (Sidebar), we satisfy the "pro" user's need for transparency without cluttering the interface for the target audience.
 -   **Debugging Efficiency**: Timestamps and system metrics in the console provide immediate insights into where a process might be hanging or failing due to resource constraints.
 -   **Developer Trust**: Clear "Success" and "Failed" indicators for every command eliminate guesswork about the cumulative state of the project initialization.
+
+## Persisting User Messages in Conversation Timeline (2026-04-02)
+
+### Problem
+User messages (initial prompts and follow-up requests) were not being saved to the `project_messages` table. They were only used to trigger the generation worker. This caused user messages to disappear from the sidebar timeline upon page refresh, leading to an incoherent conversation history.
+
+### Solution
+Implemented a dual-layer persistence and synchronization strategy:
+1.  **Backend Persistence**: Updated `/api/generate-daytona/route.ts` to insert the user's `prompt` into the `project_messages` table with `type: 'user'`.
+2.  **Deduplication Logic**: Added a check in the backend to avoid saving duplicate user messages (e.g., during page refreshes or retries) by verifying if the same content already exists for that project.
+3.  **Optimistic UI**: Updated the frontend `handleSubmit` to add the user's message to the local state immediately for instant feedback.
+4.  **Realtime Merging**: Enhanced the Realtime and polling fallback handlers to "merge" optimistic local messages with their server-side counterparts by matching content and updating the message ID, preventing duplicate entries in the UI.
+
+### Rationale
+-   **Coherence**: Ensures the timeline remains a complete record of the interaction between the user and the agent.
+-   **Performance**: Optimistic UI updates keep the interface feeling snappy while the backend handles the reliable storage.
+-   **Reliability**: Deduplication prevents the timeline from being cluttered with redundant entries during development loops or network retries.
+
